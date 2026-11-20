@@ -1,0 +1,2590 @@
+<!DOCTYPE html>
+<html lang="id"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuizSpark — Platform Kuis Interaktif ala Quizizz</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/13.4.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore-compat.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+    :root {
+      --bg-deep: #130926;
+      --bg-mid: #1f103d;
+      --accent-purple: #8b5cf6;
+      --accent-pink: #ec4899;
+      --accent-amber: #f59e0b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 15% 15%, #2e1560 0%, #160a2c 48%, #0e061e 100%);
+      color: #f8fafc;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated floating background orbs */
+    .bg-orb {
+      position: fixed;
+      border-radius: 9999px;
+      filter: blur(80px);
+      opacity: 0.28;
+      pointer-events: none;
+      z-index: 0;
+      animation: floatOrb 14s ease-in-out infinite;
+    }
+    .bg-orb-1 { width: 340px; height: 340px; background: #7c3aed; top: -80px; left: -60px; }
+    .bg-orb-2 { width: 380px; height: 380px; background: #ec4899; bottom: -100px; right: -80px; animation-delay: -5s; }
+    .bg-orb-3 { width: 260px; height: 260px; background: #06b6d4; top: 45%; left: 55%; animation-delay: -9s; opacity: 0.16; }
+
+    @keyframes floatOrb {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(24px, -30px) scale(1.08); }
+      66% { transform: translate(-20px, 22px) scale(0.95); }
+    }
+
+    .glass {
+      background: rgba(30, 17, 60, 0.72);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .glass-light {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    /* Keyframe Animations */
+    @keyframes popIn {
+      0% { opacity: 0; transform: scale(0.86) translateY(14px); }
+      70% { opacity: 1; transform: scale(1.02) translateY(-2px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    @keyframes slideUpFade {
+      0% { opacity: 0; transform: translateY(20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes shakeWrong {
+      0%, 100% { transform: translateX(0); }
+      15%, 45%, 75% { transform: translateX(-8px); }
+      30%, 60%, 90% { transform: translateX(8px); }
+    }
+
+    @keyframes correctPulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      50% { transform: scale(1.03); box-shadow: 0 0 0 16px rgba(16, 185, 129, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    @keyframes floatScore {
+      0% { opacity: 0; transform: translate(-50%, 12px) scale(0.7); }
+      25% { opacity: 1; transform: translate(-50%, -14px) scale(1.15); }
+      100% { opacity: 0; transform: translate(-50%, -56px) scale(1); }
+    }
+
+    @keyframes countdownPop {
+      0% { opacity: 0; transform: scale(2.1); }
+      40% { opacity: 1; transform: scale(0.92); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes streakFlame {
+      0%, 100% { transform: scale(1) rotate(-3deg); }
+      50% { transform: scale(1.12) rotate(3deg); }
+    }
+
+    @keyframes podiumRise {
+      0% { transform: scaleY(0); opacity: 0; }
+      100% { transform: scaleY(1); opacity: 1; }
+    }
+
+    .anim-pop { animation: popIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .anim-slide { animation: slideUpFade 0.36s ease-out both; }
+    .anim-shake { animation: shakeWrong 0.45s ease-in-out both; }
+    .anim-correct { animation: correctPulse 0.65s ease-out both; }
+    .anim-float-score { animation: floatScore 1.15s ease-out forwards; }
+    .anim-countdown { animation: countdownPop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .anim-flame { animation: streakFlame 0.9s ease-in-out infinite; }
+    .anim-podium { transform-origin: bottom; animation: podiumRise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+    /* Quizizz-style 3D Answer Cards */
+    .answer-tile {
+      position: relative;
+      transition: transform 0.14s ease, filter 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+      border-bottom-width: 6px;
+    }
+    .answer-tile:not(:disabled):hover {
+      transform: translateY(-3px);
+      filter: brightness(1.08);
+    }
+    .answer-tile:not(:disabled):active {
+      transform: translateY(3px);
+      border-bottom-width: 2px;
+    }
+
+    .tile-0 { background: linear-gradient(135deg, #2563eb, #1d4ed8); border-bottom-color: #1e3a8a; }
+    .tile-1 { background: linear-gradient(135deg, #0d9488, #0f766e); border-bottom-color: #115e59; }
+    .tile-2 { background: linear-gradient(135deg, #d97706, #b45309); border-bottom-color: #78350f; }
+    .tile-3 { background: linear-gradient(135deg, #e11d48, #be123c); border-bottom-color: #881337; }
+
+    .tile-correct {
+      background: linear-gradient(135deg, #10b981, #059669) !important;
+      border-bottom-color: #065f46 !important;
+      box-shadow: 0 0 28px rgba(16, 185, 129, 0.55);
+    }
+    .tile-wrong {
+      background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+      border-bottom-color: #7f1d1d !important;
+      opacity: 0.95;
+    }
+    .tile-dim { opacity: 0.35; filter: saturate(0.5); }
+
+    .btn-3d {
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      border-bottom: 4px solid rgba(0, 0, 0, 0.28);
+    }
+    .btn-3d:hover { transform: translateY(-2px); }
+    .btn-3d:active { transform: translateY(2px); border-bottom-width: 2px; }
+
+    .dropzone-active {
+      border-color: #a78bfa !important;
+      background: rgba(139, 92, 246, 0.18) !important;
+      transform: scale(1.01);
+    }
+
+    /* Custom subtle scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+    ::-webkit-scrollbar-thumb { background: rgba(167,139,250,0.35); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(167,139,250,0.55); }
+  </style>
+<style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.pointer-events-none{pointer-events:none}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.sticky{position:sticky}.inset-0{inset:0px}.left-1\/2{left:50%}.left-3{left:0.75rem}.right-4{right:1rem}.top-0{top:0px}.top-1\/2{top:50%}.top-4{top:1rem}.z-10{z-index:10}.z-40{z-index:40}.z-50{z-index:50}.mx-auto{margin-left:auto;margin-right:auto}.mb-1{margin-bottom:0.25rem}.mb-4{margin-bottom:1rem}.mt-1{margin-top:0.25rem}.block{display:block}.inline-block{display:inline-block}.flex{display:flex}.inline-flex{display:inline-flex}.grid{display:grid}.hidden{display:none}.h-10{height:2.5rem}.h-12{height:3rem}.h-14{height:3.5rem}.h-16{height:4rem}.h-2{height:0.5rem}.h-3{height:0.75rem}.h-3\.5{height:0.875rem}.h-4{height:1rem}.h-44{height:11rem}.h-5{height:1.25rem}.h-6{height:1.5rem}.h-7{height:1.75rem}.h-8{height:2rem}.h-full{height:100%}.h-24{height:6rem}.max-h-\[480px\]{max-height:480px}.max-h-\[85vh\]{max-height:85vh}.max-h-\[88vh\]{max-height:88vh}.min-h-\[150px\]{min-height:150px}.w-10{width:2.5rem}.w-12{width:3rem}.w-14{width:3.5rem}.w-16{width:4rem}.w-2{width:0.5rem}.w-3\.5{width:0.875rem}.w-4{width:1rem}.w-5{width:1.25rem}.w-6{width:1.5rem}.w-7{width:1.75rem}.w-8{width:2rem}.w-\[calc\(100\%-2rem\)\]{width:calc(100% - 2rem)}.w-full{width:100%}.w-3{width:0.75rem}.max-w-2xl{max-width:42rem}.max-w-4xl{max-width:56rem}.max-w-6xl{max-width:72rem}.max-w-\[180px\]{max-width:180px}.max-w-md{max-width:28rem}.max-w-sm{max-width:24rem}.max-w-xl{max-width:36rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.-translate-y-1\/2{--tw-translate-y:-50%;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-pointer{cursor:pointer}.list-inside{list-style-position:inside}.list-decimal{list-style-type:decimal}.grid-cols-1{grid-template-columns:repeat(1, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-end{align-items:flex-end}.items-center{align-items:center}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:0.25rem}.gap-1\.5{gap:0.375rem}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-3\.5{gap:0.875rem}.gap-4{gap:1rem}.gap-6{gap:1.5rem}.space-y-1 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.25rem * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.25rem * var(--tw-space-y-reverse))}.space-y-6 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.5rem * var(--tw-space-y-reverse))}.space-y-8 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(2rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(2rem * var(--tw-space-y-reverse))}.divide-y > :not([hidden]) ~ :not([hidden]){--tw-divide-y-reverse:0;border-top-width:calc(1px * calc(1 - var(--tw-divide-y-reverse)));border-bottom-width:calc(1px * var(--tw-divide-y-reverse))}.divide-white\/10 > :not([hidden]) ~ :not([hidden]){border-color:rgb(255 255 255 / 0.1)}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.whitespace-nowrap{white-space:nowrap}.rounded{border-radius:0.25rem}.rounded-2xl{border-radius:1rem}.rounded-3xl{border-radius:1.5rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:0.5rem}.rounded-xl{border-radius:0.75rem}.border{border-width:1px}.border-2{border-width:2px}.border-b{border-bottom-width:1px}.border-t{border-top-width:1px}.border-dashed{border-style:dashed}.border-amber-300\/30{border-color:rgb(252 211 77 / 0.3)}.border-amber-400\/30{border-color:rgb(251 191 36 / 0.3)}.border-amber-400\/40{border-color:rgb(251 191 36 / 0.4)}.border-fuchsia-400\/30{border-color:rgb(232 121 249 / 0.3)}.border-rose-400\/40{border-color:rgb(251 113 133 / 0.4)}.border-violet-400\/25{border-color:rgb(167 139 250 / 0.25)}.border-violet-400\/30{border-color:rgb(167 139 250 / 0.3)}.border-violet-400\/40{border-color:rgb(167 139 250 / 0.4)}.border-white\/10{border-color:rgb(255 255 255 / 0.1)}.border-white\/15{border-color:rgb(255 255 255 / 0.15)}.bg-\[\#100622\]\/95{background-color:rgb(16 6 34 / 0.95)}.bg-amber-400{--tw-bg-opacity:1;background-color:rgb(251 191 36 / var(--tw-bg-opacity, 1))}.bg-amber-400\/20{background-color:rgb(251 191 36 / 0.2)}.bg-amber-500\/15{background-color:rgb(245 158 11 / 0.15)}.bg-amber-500\/20{background-color:rgb(245 158 11 / 0.2)}.bg-black\/20{background-color:rgb(0 0 0 / 0.2)}.bg-black\/25{background-color:rgb(0 0 0 / 0.25)}.bg-black\/30{background-color:rgb(0 0 0 / 0.3)}.bg-black\/35{background-color:rgb(0 0 0 / 0.35)}.bg-black\/40{background-color:rgb(0 0 0 / 0.4)}.bg-black\/75{background-color:rgb(0 0 0 / 0.75)}.bg-emerald-500\/20{background-color:rgb(16 185 129 / 0.2)}.bg-emerald-600{--tw-bg-opacity:1;background-color:rgb(5 150 105 / var(--tw-bg-opacity, 1))}.bg-fuchsia-500\/20{background-color:rgb(217 70 239 / 0.2)}.bg-fuchsia-500\/30{background-color:rgb(217 70 239 / 0.3)}.bg-rose-500\/20{background-color:rgb(244 63 94 / 0.2)}.bg-rose-600{--tw-bg-opacity:1;background-color:rgb(225 29 72 / var(--tw-bg-opacity, 1))}.bg-violet-500\/15{background-color:rgb(139 92 246 / 0.15)}.bg-violet-500\/20{background-color:rgb(139 92 246 / 0.2)}.bg-violet-500\/40{background-color:rgb(139 92 246 / 0.4)}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.bg-white\/10{background-color:rgb(255 255 255 / 0.1)}.bg-white\/15{background-color:rgb(255 255 255 / 0.15)}.bg-white\/5{background-color:rgb(255 255 255 / 0.05)}.bg-white\/20{background-color:rgb(255 255 255 / 0.2)}.bg-gradient-to-b{background-image:linear-gradient(to bottom, var(--tw-gradient-stops))}.bg-gradient-to-br{background-image:linear-gradient(to bottom right, var(--tw-gradient-stops))}.bg-gradient-to-r{background-image:linear-gradient(to right, var(--tw-gradient-stops))}.from-amber-300{--tw-gradient-from:#fcd34d var(--tw-gradient-from-position);--tw-gradient-to:rgb(252 211 77 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-amber-500\/25{--tw-gradient-from:rgb(245 158 11 / 0.25) var(--tw-gradient-from-position);--tw-gradient-to:rgb(245 158 11 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-cyan-500{--tw-gradient-from:#06b6d4 var(--tw-gradient-from-position);--tw-gradient-to:rgb(6 182 212 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-emerald-400{--tw-gradient-from:#34d399 var(--tw-gradient-from-position);--tw-gradient-to:rgb(52 211 153 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-emerald-500{--tw-gradient-from:#10b981 var(--tw-gradient-from-position);--tw-gradient-to:rgb(16 185 129 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-fuchsia-500{--tw-gradient-from:#d946ef var(--tw-gradient-from-position);--tw-gradient-to:rgb(217 70 239 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-violet-500{--tw-gradient-from:#8b5cf6 var(--tw-gradient-from-position);--tw-gradient-to:rgb(139 92 246 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-white{--tw-gradient-from:#fff var(--tw-gradient-from-position);--tw-gradient-to:rgb(255 255 255 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-blue-600{--tw-gradient-from:#2563eb var(--tw-gradient-from-position);--tw-gradient-to:rgb(37 99 235 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-emerald-600{--tw-gradient-from:#059669 var(--tw-gradient-from-position);--tw-gradient-to:rgb(5 150 105 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-violet-600{--tw-gradient-from:#7c3aed var(--tw-gradient-from-position);--tw-gradient-to:rgb(124 58 237 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.via-fuchsia-200{--tw-gradient-to:rgb(245 208 254 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #f5d0fe var(--tw-gradient-via-position), var(--tw-gradient-to)}.via-fuchsia-400{--tw-gradient-to:rgb(232 121 249 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #e879f9 var(--tw-gradient-via-position), var(--tw-gradient-to)}.via-pink-400{--tw-gradient-to:rgb(244 114 182 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #f472b6 var(--tw-gradient-via-position), var(--tw-gradient-to)}.via-violet-500{--tw-gradient-to:rgb(139 92 246 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #8b5cf6 var(--tw-gradient-via-position), var(--tw-gradient-to)}.to-blue-600{--tw-gradient-to:#2563eb var(--tw-gradient-to-position)}.to-fuchsia-500{--tw-gradient-to:#d946ef var(--tw-gradient-to-position)}.to-indigo-500{--tw-gradient-to:#6366f1 var(--tw-gradient-to-position)}.to-orange-500\/25{--tw-gradient-to:rgb(249 115 22 / 0.25) var(--tw-gradient-to-position)}.to-teal-300{--tw-gradient-to:#5eead4 var(--tw-gradient-to-position)}.to-teal-500{--tw-gradient-to:#14b8a6 var(--tw-gradient-to-position)}.to-violet-200{--tw-gradient-to:#ddd6fe var(--tw-gradient-to-position)}.to-violet-400{--tw-gradient-to:#a78bfa var(--tw-gradient-to-position)}.to-violet-500{--tw-gradient-to:#8b5cf6 var(--tw-gradient-to-position)}.to-violet-600{--tw-gradient-to:#7c3aed var(--tw-gradient-to-position)}.to-cyan-500{--tw-gradient-to:#06b6d4 var(--tw-gradient-to-position)}.to-fuchsia-600{--tw-gradient-to:#c026d3 var(--tw-gradient-to-position)}.bg-clip-text{-webkit-background-clip:text;background-clip:text}.fill-white{fill:#fff}.fill-current{fill:currentColor}.p-0\.5{padding:0.125rem}.p-1{padding:0.25rem}.p-2{padding:0.5rem}.p-3\.5{padding:0.875rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.px-1\.5{padding-left:0.375rem;padding-right:0.375rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-2\.5{padding-left:0.625rem;padding-right:0.625rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-0\.5{padding-top:0.125rem;padding-bottom:0.125rem}.py-1{padding-top:0.25rem;padding-bottom:0.25rem}.py-1\.5{padding-top:0.375rem;padding-bottom:0.375rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-3{padding-top:0.75rem;padding-bottom:0.75rem}.py-6{padding-top:1.5rem;padding-bottom:1.5rem}.pb-4{padding-bottom:1rem}.pl-9{padding-left:2.25rem}.pr-1{padding-right:0.25rem}.pr-3{padding-right:0.75rem}.pt-1{padding-top:0.25rem}.pt-2{padding-top:0.5rem}.pt-4{padding-top:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}.text-8xl{font-size:6rem;line-height:1}.text-\[10px\]{font-size:10px}.text-\[11px\]{font-size:11px}.text-base{font-size:1rem;line-height:1.5rem}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:0.875rem;line-height:1.25rem}.text-xl{font-size:1.25rem;line-height:1.75rem}.text-xs{font-size:0.75rem;line-height:1rem}.font-black{font-weight:900}.font-bold{font-weight:700}.font-extrabold{font-weight:800}.font-medium{font-weight:500}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-snug{line-height:1.375}.leading-tight{line-height:1.25}.tracking-tight{letter-spacing:-0.025em}.tracking-wide{letter-spacing:0.025em}.tracking-wider{letter-spacing:0.05em}.tracking-widest{letter-spacing:0.1em}.text-amber-200{--tw-text-opacity:1;color:rgb(253 230 138 / var(--tw-text-opacity, 1))}.text-amber-300{--tw-text-opacity:1;color:rgb(252 211 77 / var(--tw-text-opacity, 1))}.text-amber-400{--tw-text-opacity:1;color:rgb(251 191 36 / var(--tw-text-opacity, 1))}.text-cyan-200{--tw-text-opacity:1;color:rgb(165 243 252 / var(--tw-text-opacity, 1))}.text-cyan-400{--tw-text-opacity:1;color:rgb(34 211 238 / var(--tw-text-opacity, 1))}.text-emerald-300{--tw-text-opacity:1;color:rgb(110 231 183 / var(--tw-text-opacity, 1))}.text-emerald-400{--tw-text-opacity:1;color:rgb(52 211 153 / var(--tw-text-opacity, 1))}.text-fuchsia-100{--tw-text-opacity:1;color:rgb(250 232 255 / var(--tw-text-opacity, 1))}.text-fuchsia-200{--tw-text-opacity:1;color:rgb(245 208 254 / var(--tw-text-opacity, 1))}.text-fuchsia-300{--tw-text-opacity:1;color:rgb(240 171 252 / var(--tw-text-opacity, 1))}.text-fuchsia-400{--tw-text-opacity:1;color:rgb(232 121 249 / var(--tw-text-opacity, 1))}.text-orange-400{--tw-text-opacity:1;color:rgb(251 146 60 / var(--tw-text-opacity, 1))}.text-rose-400{--tw-text-opacity:1;color:rgb(251 113 133 / var(--tw-text-opacity, 1))}.text-slate-900{--tw-text-opacity:1;color:rgb(15 23 42 / var(--tw-text-opacity, 1))}.text-transparent{color:transparent}.text-violet-100{--tw-text-opacity:1;color:rgb(237 233 254 / var(--tw-text-opacity, 1))}.text-violet-200{--tw-text-opacity:1;color:rgb(221 214 254 / var(--tw-text-opacity, 1))}.text-violet-200\/75{color:rgb(221 214 254 / 0.75)}.text-violet-200\/85{color:rgb(221 214 254 / 0.85)}.text-violet-300{--tw-text-opacity:1;color:rgb(196 181 253 / var(--tw-text-opacity, 1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.text-white\/90{color:rgb(255 255 255 / 0.9)}.underline{-webkit-text-decoration-line:underline;text-decoration-line:underline}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.placeholder-violet-300\/50::placeholder{color:rgb(196 181 253 / 0.5)}.placeholder-violet-300\/60::placeholder{color:rgb(196 181 253 / 0.6)}.placeholder-violet-400\/50::placeholder{color:rgb(167 139 250 / 0.5)}.opacity-0{opacity:0}.opacity-90{opacity:0.9}.shadow{--tw-shadow:0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-2xl{--tw-shadow:0 25px 50px -12px rgb(0 0 0 / 0.25);--tw-shadow-colored:0 25px 50px -12px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-lg{--tw-shadow:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 10px 15px -3px var(--tw-shadow-color), 0 4px 6px -4px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-cyan-600\/25{--tw-shadow-color:rgb(8 145 178 / 0.25);--tw-shadow:var(--tw-shadow-colored)}.shadow-emerald-500\/40{--tw-shadow-color:rgb(16 185 129 / 0.4);--tw-shadow:var(--tw-shadow-colored)}.shadow-emerald-600\/30{--tw-shadow-color:rgb(5 150 105 / 0.3);--tw-shadow:var(--tw-shadow-colored)}.shadow-fuchsia-600\/30{--tw-shadow-color:rgb(192 38 211 / 0.3);--tw-shadow:var(--tw-shadow-colored)}.shadow-violet-600\/40{--tw-shadow-color:rgb(124 58 237 / 0.4);--tw-shadow:var(--tw-shadow-colored)}.shadow-violet-950\/50{--tw-shadow-color:rgb(46 16 101 / 0.5);--tw-shadow:var(--tw-shadow-colored)}.backdrop-blur-md{--tw-backdrop-blur:blur(12px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.backdrop-blur-sm{--tw-backdrop-blur:blur(4px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.transition-all{transition-property:all;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.transition-colors{transition-property:color, background-color, border-color, fill, stroke, -webkit-text-decoration-color;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, -webkit-text-decoration-color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.transition-transform{transition-property:transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.duration-100{transition-duration:100ms}.duration-200{transition-duration:200ms}.selection\:bg-fuchsia-500 *::selection{--tw-bg-opacity:1;background-color:rgb(217 70 239 / var(--tw-bg-opacity, 1))}.selection\:text-white *::selection{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.selection\:bg-fuchsia-500::selection{--tw-bg-opacity:1;background-color:rgb(217 70 239 / var(--tw-bg-opacity, 1))}.selection\:text-white::selection{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.hover\:-translate-y-1:hover{--tw-translate-y:-0.25rem;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.hover\:border-fuchsia-400\/70:hover{border-color:rgb(232 121 249 / 0.7)}.hover\:bg-amber-500\/30:hover{background-color:rgb(245 158 11 / 0.3)}.hover\:bg-emerald-500:hover{--tw-bg-opacity:1;background-color:rgb(16 185 129 / var(--tw-bg-opacity, 1))}.hover\:bg-fuchsia-500\/50:hover{background-color:rgb(217 70 239 / 0.5)}.hover\:bg-rose-500:hover{--tw-bg-opacity:1;background-color:rgb(244 63 94 / var(--tw-bg-opacity, 1))}.hover\:bg-rose-500\/25:hover{background-color:rgb(244 63 94 / 0.25)}.hover\:bg-rose-500\/30:hover{background-color:rgb(244 63 94 / 0.3)}.hover\:bg-violet-50:hover{--tw-bg-opacity:1;background-color:rgb(245 243 255 / var(--tw-bg-opacity, 1))}.hover\:bg-violet-500\/60:hover{background-color:rgb(139 92 246 / 0.6)}.hover\:bg-white\/15:hover{background-color:rgb(255 255 255 / 0.15)}.hover\:bg-white\/20:hover{background-color:rgb(255 255 255 / 0.2)}.hover\:bg-white\/25:hover{background-color:rgb(255 255 255 / 0.25)}.hover\:bg-white\/5:hover{background-color:rgb(255 255 255 / 0.05)}.hover\:bg-white\/30:hover{background-color:rgb(255 255 255 / 0.3)}.hover\:bg-gradient-to-r:hover{background-image:linear-gradient(to right, var(--tw-gradient-stops))}.hover\:from-cyan-400:hover{--tw-gradient-from:#22d3ee var(--tw-gradient-from-position);--tw-gradient-to:rgb(34 211 238 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.hover\:from-fuchsia-400:hover{--tw-gradient-from:#e879f9 var(--tw-gradient-from-position);--tw-gradient-to:rgb(232 121 249 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.hover\:from-fuchsia-500:hover{--tw-gradient-from:#d946ef var(--tw-gradient-from-position);--tw-gradient-to:rgb(217 70 239 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.hover\:to-blue-500:hover{--tw-gradient-to:#3b82f6 var(--tw-gradient-to-position)}.hover\:to-violet-500:hover{--tw-gradient-to:#8b5cf6 var(--tw-gradient-to-position)}.hover\:to-violet-600:hover{--tw-gradient-to:#7c3aed var(--tw-gradient-to-position)}.hover\:text-rose-200:hover{--tw-text-opacity:1;color:rgb(254 205 211 / var(--tw-text-opacity, 1))}.hover\:text-white:hover{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.hover\:shadow-xl:hover{--tw-shadow:0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.hover\:shadow-violet-900\/40:hover{--tw-shadow-color:rgb(76 29 149 / 0.4);--tw-shadow:var(--tw-shadow-colored)}.focus\:outline-none:focus{outline:2px solid transparent;outline-offset:2px}.focus\:ring-2:focus{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000)}.focus\:ring-cyan-400:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(34 211 238 / var(--tw-ring-opacity, 1))}.focus\:ring-fuchsia-400:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(232 121 249 / var(--tw-ring-opacity, 1))}.focus\:ring-violet-400:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(167 139 250 / var(--tw-ring-opacity, 1))}.group:hover .group-hover\:scale-105{--tw-scale-x:1.05;--tw-scale-y:1.05;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}@media (min-width: 640px){.sm\:block{display:block}.sm\:inline-flex{display:inline-flex}.sm\:w-64{width:16rem}.sm\:max-w-xs{max-width:20rem}.sm\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.sm\:grid-cols-4{grid-template-columns:repeat(4, minmax(0, 1fr))}.sm\:gap-4{gap:1rem}.sm\:gap-5{gap:1.25rem}.sm\:p-10{padding:2.5rem}.sm\:p-6{padding:1.5rem}.sm\:p-8{padding:2rem}.sm\:px-4{padding-left:1rem;padding-right:1rem}.sm\:py-8{padding-top:2rem;padding-bottom:2rem}.sm\:text-2xl{font-size:1.5rem;line-height:2rem}.sm\:text-3xl{font-size:1.875rem;line-height:2.25rem}.sm\:text-4xl{font-size:2.25rem;line-height:2.5rem}.sm\:text-9xl{font-size:8rem;line-height:1}.sm\:text-base{font-size:1rem;line-height:1.5rem}.sm\:text-lg{font-size:1.125rem;line-height:1.75rem}.sm\:text-sm{font-size:0.875rem;line-height:1.25rem}.sm\:text-xl{font-size:1.25rem;line-height:1.75rem}}@media (min-width: 768px){.md\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.md\:text-3xl{font-size:1.875rem;line-height:2.25rem}}@media (min-width: 1024px){.lg\:col-span-5{grid-column:span 5 / span 5}.lg\:col-span-7{grid-column:span 7 / span 7}.lg\:grid-cols-12{grid-template-columns:repeat(12, minmax(0, 1fr))}.lg\:grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.lg\:grid-cols-4{grid-template-columns:repeat(4, minmax(0, 1fr))}}</style></head>
+<body class="relative antialiased selection:bg-fuchsia-500 selection:text-white">
+  <!-- Background animated orbs -->
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-[calc(100%-2rem)] pointer-events-none"></div>
+
+  <!-- Top Navigation -->
+  <header class="sticky top-0 z-40 glass border-b border-white/10">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <button id="btn-brand-home" type="button" class="flex items-center gap-2.5 group focus:outline-none">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-fuchsia-500 via-violet-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-violet-600/40 group-hover:scale-105 transition-transform">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="zap" class="lucide lucide-zap w-5 h-5 text-white fill-white"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+        </div>
+        <div class="text-left">
+          <span class="font-black text-lg tracking-tight bg-gradient-to-r from-white via-fuchsia-200 to-violet-200 bg-clip-text text-transparent block leading-none">QuizSpark</span>
+          <span class="text-[11px] text-violet-300 font-medium hidden sm:block">Kuis Interaktif &amp; Auto-Import</span>
+        </div>
+      </button>
+
+      <!-- Role Switcher -->
+      <nav class="flex items-center bg-black/30 p-1 rounded-xl border border-white/10">
+        <button id="nav-student" type="button" class="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="gamepad-2" class="lucide lucide-gamepad-2 w-4 h-4"><line x1="6" x2="10" y1="11" y2="11"></line><line x1="8" x2="8" y1="9" y2="13"></line><line x1="15" x2="15.01" y1="12" y2="12"></line><line x1="18" x2="18.01" y1="10" y2="10"></line><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z"></path></svg>
+          <span>Siswa</span>
+        </button>
+        <button id="nav-teacher" type="button" class="px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all text-violet-300 hover:text-white">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield-check" class="lucide lucide-shield-check w-4 h-4"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          <span>Guru (Admin)</span>
+        </button>
+      </nav>
+
+      <!-- Cloud Status & Sound Toggle -->
+      <div class="flex items-center gap-2">
+        <button id="btn-cloud-status" type="button" title="Status Database Cloud" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-light hover:bg-white/15 transition-colors text-xs font-bold text-amber-300">
+          <span id="cloud-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span id="cloud-label">Mode Lokal</span>
+        </button>
+        <button id="btn-sound-toggle" type="button" title="Suara Efek" class="p-2 rounded-xl glass-light hover:bg-white/15 transition-colors text-violet-200">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="volume-2" id="icon-sound" class="lucide lucide-volume-2 w-4 h-4"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"></path><path d="M16 9a5 5 0 0 1 0 6"></path><path d="M19.364 18.364a9 9 0 0 0 0-12.728"></path></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="relative z-10 max-w-6xl mx-auto px-4 py-6 sm:py-8">
+
+    <!-- ==================== VIEW: STUDENT HOME ==================== -->
+    <section id="view-student-home" class="space-y-8 anim-slide">
+      <!-- Hero Join Banner -->
+      <div class="glass rounded-3xl p-6 sm:p-8 relative overflow-hidden shadow-2xl shadow-violet-950/50">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div class="lg:col-span-7 space-y-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-fuchsia-500/20 border border-fuchsia-400/30 text-fuchsia-200 text-xs font-bold">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="sparkles" class="lucide lucide-sparkles w-3.5 h-3.5"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path><path d="M4 17v2"></path><path d="M5 18H3"></path></svg>
+              <span>Portal Pengguna (Siswa)</span>
+            </div>
+            <h1 class="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
+              Siap Adu Cepat &amp; Tepat di <span class="bg-gradient-to-r from-amber-300 via-pink-400 to-violet-400 bg-clip-text text-transparent">QuizSpark?</span>
+            </h1>
+            <p class="text-sm sm:text-base text-violet-200/85 max-w-xl">
+              Masukkan nama dan kode kuis dari gurumu, atau pilih langsung kuis yang tersedia di bawah. Jawab cepat untuk dapat bonus kecepatan dan kombo streak!
+            </p>
+          </div>
+
+          <!-- Join Form Card -->
+          <div class="lg:col-span-5 bg-black/30 rounded-2xl p-5 border border-white/10 space-y-3">
+            <div>
+              <label for="input-student-name" class="block text-xs font-semibold text-violet-200 mb-1">Nama Siswa</label>
+              <input id="input-student-name" type="text" placeholder="Contoh: Raka Pratama" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-violet-300/50 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+            </div>
+            <div>
+              <label for="input-join-code" class="block text-xs font-semibold text-violet-200 mb-1">Kode Kuis</label>
+              <div class="flex gap-2">
+                <input id="input-join-code" type="text" placeholder="Contoh: WEB101" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-violet-300/50 text-sm font-mono uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+                <button id="btn-join-quiz" type="button" class="btn-3d shrink-0 px-5 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-600 hover:from-fuchsia-400 hover:to-violet-500 text-white font-extrabold text-sm flex items-center gap-1.5 shadow-lg shadow-fuchsia-600/30">
+                  <span>Gabung</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-right" class="lucide lucide-arrow-right w-4 h-4"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Available Quizzes Grid -->
+      <div class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg sm:text-xl font-extrabold flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="layers" class="lucide lucide-layers w-5 h-5 text-amber-400"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path></svg>
+            <span>Kuis Aktif dari Guru</span>
+          </h2>
+          <div class="relative w-full sm:w-64">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="search" class="lucide lucide-search w-4 h-4 text-violet-300 absolute left-3 top-1/2 -translate-y-1/2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            <input id="input-search-quiz" type="text" placeholder="Cari judul atau mapel..." class="w-full pl-9 pr-3 py-2 rounded-xl glass-light text-sm text-white placeholder-violet-300/60 focus:outline-none focus:ring-2 focus:ring-violet-400">
+          </div>
+        </div>
+
+        <div id="student-quiz-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="glass rounded-2xl overflow-hidden flex flex-col justify-between group hover:-translate-y-1 transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/40">
+              <div>
+                <div class="h-24 bg-gradient-to-br from-violet-600 to-fuchsia-600 p-4 flex flex-col justify-between relative overflow-hidden">
+                  <div class="flex items-center justify-between gap-2 relative z-10">
+                    <span class="px-2.5 py-0.5 rounded-full bg-black/30 text-white text-[11px] font-bold backdrop-blur-sm">Umum</span>
+                    <button type="button" data-copy-code="QZPF2S" class="px-2.5 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white font-mono text-xs font-extrabold flex items-center gap-1 transition-colors" title="Salin Kode">
+                      <span>QZPF2S</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="copy" class="lucide lucide-copy w-3 h-3"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                    </button>
+                  </div>
+                  <div class="text-white/90 text-xs font-semibold flex items-center gap-3 relative z-10">
+                    <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="help-circle" class="lucide lucide-help-circle w-3.5 h-3.5"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg> 20 Soal</span>
+                    <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="timer" class="lucide lucide-timer w-3.5 h-3.5"><line x1="10" x2="14" y1="2" y2="2"></line><line x1="12" x2="15" y1="14" y2="11"></line><circle cx="12" cy="14" r="8"></circle></svg> 20s/soal</span>
+                  </div>
+                </div>
+                <div class="p-4 space-y-2">
+                  <h3 class="font-extrabold text-base text-white leading-snug">soal quziz kelas XI F   3</h3>
+                  <p class="text-xs text-violet-300">1 kali dimainkan siswa</p>
+                </div>
+              </div>
+              <div class="px-4 pb-4">
+                <button type="button" data-play-quiz="qz-1795188608143" class="btn-3d w-full py-2.5 rounded-xl bg-white/10 hover:bg-gradient-to-r hover:from-fuchsia-500 hover:to-violet-600 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play" class="lucide lucide-play w-4 h-4 fill-current"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                  <span>Mainkan Sekarang</span>
+                </button>
+              </div>
+            </div>
+          
+            <div class="glass rounded-2xl overflow-hidden flex flex-col justify-between group hover:-translate-y-1 transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/40">
+              <div>
+                <div class="h-24 bg-gradient-to-br from-blue-600 to-cyan-500 p-4 flex flex-col justify-between relative overflow-hidden">
+                  <div class="flex items-center justify-between gap-2 relative z-10">
+                    <span class="px-2.5 py-0.5 rounded-full bg-black/30 text-white text-[11px] font-bold backdrop-blur-sm">Informatika</span>
+                    <button type="button" data-copy-code="WEB101" class="px-2.5 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white font-mono text-xs font-extrabold flex items-center gap-1 transition-colors" title="Salin Kode">
+                      <span>WEB101</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="copy" class="lucide lucide-copy w-3 h-3"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                    </button>
+                  </div>
+                  <div class="text-white/90 text-xs font-semibold flex items-center gap-3 relative z-10">
+                    <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="help-circle" class="lucide lucide-help-circle w-3.5 h-3.5"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg> 5 Soal</span>
+                    <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="timer" class="lucide lucide-timer w-3.5 h-3.5"><line x1="10" x2="14" y1="2" y2="2"></line><line x1="12" x2="15" y1="14" y2="11"></line><circle cx="12" cy="14" r="8"></circle></svg> 20s/soal</span>
+                  </div>
+                </div>
+                <div class="p-4 space-y-2">
+                  <h3 class="font-extrabold text-base text-white leading-snug">Dasar Pemrograman Web Modern</h3>
+                  <p class="text-xs text-violet-300">3 kali dimainkan siswa</p>
+                </div>
+              </div>
+              <div class="px-4 pb-4">
+                <button type="button" data-play-quiz="qz-web101" class="btn-3d w-full py-2.5 rounded-xl bg-white/10 hover:bg-gradient-to-r hover:from-fuchsia-500 hover:to-violet-600 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play" class="lucide lucide-play w-4 h-4 fill-current"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                  <span>Mainkan Sekarang</span>
+                </button>
+              </div>
+            </div>
+          
+            <div class="glass rounded-2xl overflow-hidden flex flex-col justify-between group hover:-translate-y-1 transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/40">
+              <div>
+                <div class="h-24 bg-gradient-to-br from-emerald-600 to-teal-500 p-4 flex flex-col justify-between relative overflow-hidden">
+                  <div class="flex items-center justify-between gap-2 relative z-10">
+                    <span class="px-2.5 py-0.5 rounded-full bg-black/30 text-white text-[11px] font-bold backdrop-blur-sm">Ilmu Komputer</span>
+                    <button type="button" data-copy-code="ALGO26" class="px-2.5 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white font-mono text-xs font-extrabold flex items-center gap-1 transition-colors" title="Salin Kode">
+                      <span>ALGO26</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="copy" class="lucide lucide-copy w-3 h-3"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                    </button>
+                  </div>
+                  <div class="text-white/90 text-xs font-semibold flex items-center gap-3 relative z-10">
+                    <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="help-circle" class="lucide lucide-help-circle w-3.5 h-3.5"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg> 4 Soal</span>
+                    <span class="flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="timer" class="lucide lucide-timer w-3.5 h-3.5"><line x1="10" x2="14" y1="2" y2="2"></line><line x1="12" x2="15" y1="14" y2="11"></line><circle cx="12" cy="14" r="8"></circle></svg> 25s/soal</span>
+                  </div>
+                </div>
+                <div class="p-4 space-y-2">
+                  <h3 class="font-extrabold text-base text-white leading-snug">Algoritma &amp; Struktur Data</h3>
+                  <p class="text-xs text-violet-300">2 kali dimainkan siswa</p>
+                </div>
+              </div>
+              <div class="px-4 pb-4">
+                <button type="button" data-play-quiz="qz-algo202" class="btn-3d w-full py-2.5 rounded-xl bg-white/10 hover:bg-gradient-to-r hover:from-fuchsia-500 hover:to-violet-600 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play" class="lucide lucide-play w-4 h-4 fill-current"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                  <span>Mainkan Sekarang</span>
+                </button>
+              </div>
+            </div>
+          </div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW: COUNTDOWN OVERLAY ==================== -->
+    <div id="overlay-countdown" class="fixed inset-0 z-50 hidden items-center justify-center bg-[#100622]/95 backdrop-blur-md">
+      <div class="text-center space-y-4">
+        <p id="countdown-quiz-title" class="text-violet-300 font-bold text-base sm:text-lg tracking-wide uppercase"></p>
+        <div id="countdown-number" class="text-8xl sm:text-9xl font-black bg-gradient-to-b from-amber-300 via-fuchsia-400 to-violet-500 bg-clip-text text-transparent">3</div>
+        <p class="text-violet-200/75 text-sm">Bersiap... gunakan klik atau tombol 1–4</p>
+      </div>
+    </div>
+
+    <!-- ==================== VIEW: QUIZ ARENA ==================== -->
+    <section id="view-quiz-play" class="hidden max-w-4xl mx-auto space-y-5">
+      <!-- Top HUD -->
+      <div class="glass rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <button id="btn-quit-quiz" type="button" class="p-2 rounded-xl bg-white/10 hover:bg-rose-500/30 text-violet-200 hover:text-white transition-colors" title="Keluar Kuis">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="x" class="lucide lucide-x w-4 h-4"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+          </button>
+          <div>
+            <div id="play-quiz-title" class="text-xs text-violet-300 font-semibold truncate max-w-[180px] sm:max-w-xs"></div>
+            <div id="play-q-counter" class="text-sm sm:text-base font-extrabold">Soal 1 / 5</div>
+          </div>
+        </div>
+
+        <!-- Streak + Score -->
+        <div class="flex items-center gap-3 relative">
+          <div id="play-streak-badge" class="hidden items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/25 to-orange-500/25 border border-amber-400/40 text-amber-300 text-xs sm:text-sm font-black">
+            <span class="anim-flame inline-block">🔥</span>
+            <span id="play-streak-count">0</span><span>x Streak</span>
+          </div>
+
+          <div class="relative px-4 py-1.5 rounded-xl bg-violet-500/20 border border-violet-400/30 text-right">
+            <div class="text-[10px] uppercase tracking-wider text-violet-300 font-bold">Skor</div>
+            <div id="play-score" class="text-base sm:text-lg font-black text-white leading-none">0</div>
+            <div id="floating-points" class="pointer-events-none absolute left-1/2 top-0 text-emerald-300 font-black text-lg whitespace-nowrap opacity-0"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress & Timer Bar -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between text-xs font-bold">
+          <span class="text-violet-300">Waktu Tersisa</span>
+          <span id="play-timer-text" class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-sm">20s</span>
+        </div>
+        <div class="h-3 w-full bg-white/10 rounded-full overflow-hidden p-0.5">
+          <div id="play-timer-bar" class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all duration-100" style="width: 100%"></div>
+        </div>
+      </div>
+
+      <!-- Question Card -->
+      <div id="play-question-card" class="glass rounded-3xl p-6 sm:p-10 text-center shadow-2xl min-h-[150px] flex flex-col items-center justify-center gap-3">
+        <span id="play-q-badge" class="px-3 py-1 rounded-full bg-white/10 text-violet-200 text-xs font-bold">Pilihan Ganda</span>
+        <h2 id="play-question-text" class="text-xl sm:text-2xl md:text-3xl font-extrabold leading-snug text-white"></h2>
+      </div>
+
+      <!-- 4 Colorful Answer Tiles -->
+      <div id="play-options-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4"></div>
+
+      <!-- Feedback Banner -->
+      <div id="play-feedback-bar" class="hidden rounded-2xl p-4 items-center justify-between gap-4 anim-pop">
+        <div class="flex items-center gap-3">
+          <div id="feedback-icon-wrap" class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"></div>
+          <div>
+            <div id="feedback-title" class="font-black text-base sm:text-lg"></div>
+            <div id="feedback-sub" class="text-xs sm:text-sm opacity-90"></div>
+          </div>
+        </div>
+        <button id="btn-next-question" type="button" class="btn-3d shrink-0 px-5 py-2.5 rounded-xl bg-white text-slate-900 font-extrabold text-sm flex items-center gap-1.5 hover:bg-violet-50">
+          <span id="btn-next-label">Lanjut</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-right" class="lucide lucide-chevron-right w-4 h-4"><path d="m9 18 6-6-6-6"></path></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW: QUIZ RESULT & LEADERBOARD ==================== -->
+    <section id="view-quiz-result" class="hidden max-w-4xl mx-auto space-y-6 anim-pop">
+      <div class="glass rounded-3xl p-6 sm:p-8 text-center space-y-6">
+        <div class="space-y-2">
+          <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-400/20 border border-amber-300/30 text-amber-200 text-xs font-bold">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="trophy" class="lucide lucide-trophy w-3.5 h-3.5"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>
+            <span>Kuis Selesai!</span>
+          </div>
+          <h2 id="result-headline" class="text-2xl sm:text-4xl font-black">Hebat, Raka!</h2>
+          <p id="result-quiz-name" class="text-violet-300 text-sm font-medium"></p>
+        </div>
+
+        <!-- Score KPIs -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="glass-light rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Total Skor</div>
+            <div id="res-score" class="text-2xl sm:text-3xl font-black text-amber-300 mt-1">0</div>
+          </div>
+          <div class="glass-light rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Akurasi</div>
+            <div id="res-accuracy" class="text-2xl sm:text-3xl font-black text-emerald-400 mt-1">0%</div>
+          </div>
+          <div class="glass-light rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Benar / Total</div>
+            <div id="res-correct" class="text-2xl sm:text-3xl font-black text-white mt-1">0/0</div>
+          </div>
+          <div class="glass-light rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Streak Terbaik</div>
+            <div id="res-streak" class="text-2xl sm:text-3xl font-black text-orange-400 mt-1">0x</div>
+          </div>
+        </div>
+
+        <!-- Podium Top 3 -->
+        <div class="pt-4">
+          <h3 class="text-sm font-bold uppercase tracking-wider text-violet-300 mb-4">Papan Peringkat Kuis Ini</h3>
+          <div id="result-podium" class="flex items-end justify-center gap-3 sm:gap-5 h-44 max-w-md mx-auto"></div>
+        </div>
+
+        <!-- Full Leaderboard Table -->
+        <div class="overflow-x-auto text-left rounded-2xl border border-white/10 bg-black/20">
+          <table class="w-full text-sm">
+            <thead class="bg-white/5 text-violet-300 text-xs uppercase">
+              <tr>
+                <th class="px-4 py-3 text-center w-14">#</th>
+                <th class="px-4 py-3">Siswa</th>
+                <th class="px-4 py-3 text-right">Akurasi</th>
+                <th class="px-4 py-3 text-right">Streak</th>
+                <th class="px-4 py-3 text-right">Skor</th>
+              </tr>
+            </thead>
+            <tbody id="result-leaderboard-body" class="divide-y divide-white/10"></tbody>
+          </table>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <button id="btn-replay-quiz" type="button" class="btn-3d px-6 py-3 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white font-extrabold text-sm flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="rotate-ccw" class="lucide lucide-rotate-ccw w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            <span>Main Lagi</span>
+          </button>
+          <button id="btn-back-home" type="button" class="btn-3d px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="home" class="lucide lucide-home w-4 h-4"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+            <span>Pilih Kuis Lain</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Review Jawaban -->
+      <div class="glass rounded-3xl p-6 space-y-4">
+        <h3 class="font-extrabold text-lg flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="clipboard-check" class="lucide lucide-clipboard-check w-5 h-5 text-emerald-400"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="m9 14 2 2 4-4"></path></svg>
+          <span>Pembahasan Jawabanmu</span>
+        </h3>
+        <div id="result-review-list" class="space-y-3"></div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW: TEACHER LOGIN ==================== -->
+    <section id="view-teacher-login" class="hidden max-w-md mx-auto py-6 anim-pop">
+      <div class="glass rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl">
+        <div class="text-center space-y-2">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-600/40">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="graduation-cap" class="lucide lucide-graduation-cap w-7 h-7 text-white"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"></path><path d="M22 10v6"></path><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"></path></svg>
+          </div>
+          <h2 class="text-2xl font-black">Login Admin (Guru)</h2>
+          <p class="text-xs sm:text-sm text-violet-300">Masuk untuk upload file soal otomatis, kelola kuis, dan pantau nilai siswa.</p>
+        </div>
+
+        <form id="form-teacher-login" class="space-y-4">
+          <div>
+            <label for="teacher-user" class="block text-xs font-semibold text-violet-200 mb-1">Username</label>
+            <input id="teacher-user" type="text" required="" placeholder="guru" class="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-violet-300/50 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+          </div>
+          <div>
+            <label for="teacher-pass" class="block text-xs font-semibold text-violet-200 mb-1">Password</label>
+            <input id="teacher-pass" type="password" required="" placeholder="••••••" class="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-violet-300/50 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+          </div>
+          <button type="submit" class="btn-3d w-full py-3 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white font-extrabold text-sm shadow-lg shadow-fuchsia-600/30">
+            Masuk ke Dashboard Guru
+          </button>
+        </form>
+
+        <div class="p-3.5 rounded-xl bg-violet-500/15 border border-violet-400/25 flex items-center justify-between gap-2 text-xs">
+          <div class="text-violet-200">
+            <span class="font-bold text-white">Akun Demo:</span> <code class="bg-black/30 px-1.5 py-0.5 rounded">guru</code> / <code class="bg-black/30 px-1.5 py-0.5 rounded">guru123</code>
+          </div>
+          <button id="btn-fill-demo-login" type="button" class="px-2.5 py-1 rounded-lg bg-violet-500/40 hover:bg-violet-500/60 text-white font-bold shrink-0 transition-colors">
+            Isi Otomatis
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== VIEW: TEACHER DASHBOARD ==================== -->
+    <section id="view-teacher-dashboard" class="hidden space-y-6 anim-slide">
+      <!-- Teacher Header -->
+      <div class="glass rounded-3xl p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-indigo-500 flex items-center justify-center font-black text-lg shadow-lg">
+            G
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-xl sm:text-2xl font-black">Dashboard Admin Guru</h1>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">Aktif</span>
+            </div>
+            <p class="text-xs sm:text-sm text-violet-300">Unggah file soal untuk otomatis jadi kuis interaktif ala Quizizz.</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btn-open-cloud-modal" type="button" class="btn-3d px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs sm:text-sm font-extrabold flex items-center gap-1.5 shadow-lg shadow-cyan-600/25">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="cloud" class="lucide lucide-cloud w-4 h-4"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+            <span>Cloud &amp; Publish</span>
+          </button>
+          <button id="btn-teacher-logout" type="button" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-rose-500/25 text-violet-200 hover:text-rose-200 text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="log-out" class="lucide lucide-log-out w-4 h-4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" x2="9" y1="12" y2="12"></line></svg>
+            <span>Keluar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Dashboard Tabs -->
+      <div class="flex flex-wrap gap-2">
+        <button data-tab="import" type="button" class="teacher-tab px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="file-up" class="lucide lucide-file-up w-4 h-4"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M12 12v6"></path><path d="m15 15-3-3-3 3"></path></svg>
+          <span>Import Soal Otomatis</span>
+        </button>
+        <button data-tab="manage" type="button" class="teacher-tab px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="folder-kanban" class="lucide lucide-folder-kanban w-4 h-4"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"></path><path d="M8 10v4"></path><path d="M12 10v2"></path><path d="M16 10v6"></path></svg>
+          <span>Kelola Kuis (<span id="count-quizzes">0</span>)</span>
+        </button>
+        <button data-tab="scores" type="button" class="teacher-tab px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bar-chart-3" class="lucide lucide-bar-chart-3 w-4 h-4"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
+          <span>Rekap Nilai Siswa</span>
+        </button>
+      </div>
+
+      <!-- ===== TAB 1: AUTO-IMPORT SOAL ===== -->
+      <div id="tab-import" class="space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Left: Upload & Paste Area -->
+          <div class="lg:col-span-7 glass rounded-3xl p-5 sm:p-6 space-y-5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h2 class="text-lg font-extrabold flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="wand-2" class="lucide lucide-wand-2 w-5 h-5 text-fuchsia-400"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"></path><path d="m14 7 3 3"></path><path d="M5 6v4"></path><path d="M19 14v4"></path><path d="M10 2v2"></path><path d="M7 8H3"></path><path d="M21 16h-4"></path><path d="M11 3H9"></path></svg>
+                <span>Unggah File Soal</span>
+              </h2>
+              <div class="flex flex-wrap gap-1.5">
+                <button id="btn-dl-template-txt" type="button" class="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="download" class="lucide lucide-download w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg> Template .txt
+                </button>
+                <button id="btn-dl-template-csv" type="button" class="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="download" class="lucide lucide-download w-3.5 h-3.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg> Template .csv
+                </button>
+              </div>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div id="dropzone" class="border-2 border-dashed border-violet-400/40 rounded-2xl p-6 sm:p-8 text-center space-y-3 transition-all cursor-pointer hover:border-fuchsia-400/70 hover:bg-white/5">
+              <input id="input-file-upload" type="file" accept=".txt,.csv,.docx" class="hidden">
+              <div class="w-14 h-14 mx-auto rounded-2xl bg-violet-500/20 border border-violet-400/30 flex items-center justify-center text-fuchsia-300">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="upload-cloud" class="lucide lucide-upload-cloud w-7 h-7"><path d="M12 13v8"></path><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="m8 17 4-4 4 4"></path></svg>
+              </div>
+              <div>
+                <p class="font-bold text-base">Seret &amp; lepas file soal ke sini, atau <span class="text-fuchsia-300 underline">pilih file</span></p>
+                <p class="text-xs text-violet-300 mt-1">Mendukung otomatis format <strong>Word (.docx)</strong>, <strong>Teks (.txt)</strong>, dan <strong>Excel/CSV (.csv)</strong></p>
+              </div>
+              <div class="pt-1">
+                <button id="btn-load-sample-import" type="button" class="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-200 text-xs font-bold inline-flex items-center gap-1.5 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="sparkles" class="lucide lucide-sparkles w-3.5 h-3.5"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path><path d="M4 17v2"></path><path d="M5 18H3"></path></svg>
+                  <span>Coba Simulasi File Soal Otomatis</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Alternative: Direct Paste -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label for="textarea-raw-import" class="text-xs font-bold text-violet-200">Atau tempel (paste) teks soal langsung di sini:</label>
+                <button id="btn-parse-text" type="button" class="px-3 py-1 rounded-lg bg-fuchsia-500/30 hover:bg-fuchsia-500/50 text-fuchsia-100 text-xs font-bold transition-colors">
+                  Proses Teks →
+                </button>
+              </div>
+              <textarea id="textarea-raw-import" rows="5" placeholder="1. Bahasa pemrograman untuk struktur halaman web adalah?
+A. Python
+B. HTML
+C. C++
+D. Java
+Jawaban: B" class="w-full p-3.5 rounded-xl bg-black/30 border border-white/15 text-xs sm:text-sm font-mono text-violet-100 placeholder-violet-400/50 focus:outline-none focus:ring-2 focus:ring-fuchsia-400"></textarea>
+            </div>
+          </div>
+
+          <!-- Right: Quiz Settings & Format Guide -->
+          <div class="lg:col-span-5 space-y-5">
+            <div class="glass rounded-3xl p-5 sm:p-6 space-y-4">
+              <h3 class="font-extrabold text-base flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="settings-2" class="lucide lucide-settings-2 w-4 h-4 text-violet-300"><path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+                <span>Pengaturan Kuis Baru</span>
+              </h3>
+              <div>
+                <label for="new-quiz-title" class="block text-xs font-semibold text-violet-200 mb-1">Judul Kuis</label>
+                <input id="new-quiz-title" type="text" placeholder="Contoh: Kuis Pemrograman Web Pertemuan 4" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white placeholder-violet-300/50 focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="new-quiz-subject" class="block text-xs font-semibold text-violet-200 mb-1">Mata Pelajaran</label>
+                  <input id="new-quiz-subject" type="text" placeholder="Informatika" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white placeholder-violet-300/50 focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+                </div>
+                <div>
+                  <label for="new-quiz-timer" class="block text-xs font-semibold text-violet-200 mb-1">Waktu / Soal (detik)</label>
+                  <input id="new-quiz-timer" type="number" min="5" max="120" value="20" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+                </div>
+              </div>
+              <div>
+                <label for="new-quiz-code" class="block text-xs font-semibold text-violet-200 mb-1">Kode Join Siswa</label>
+                <div class="flex gap-2">
+                  <input id="new-quiz-code" type="text" class="w-full px-3.5 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm font-mono uppercase tracking-widest text-amber-300 font-bold focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+                  <button id="btn-regen-code" type="button" title="Acak Kode" class="px-3 rounded-xl bg-white/10 hover:bg-white/20 text-violet-200 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="refresh-cw" class="lucide lucide-refresh-cw w-4 h-4"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Format Helper Box -->
+            <div class="glass-light rounded-2xl p-4 text-xs text-violet-200 space-y-2">
+              <div class="font-bold text-white flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="info" class="lucide lucide-info w-4 h-4 text-cyan-400"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+                <span>Format File Soal yang Didukung</span>
+              </div>
+              <p class="leading-relaxed">
+                <strong>Word (.docx) / Teks (.txt):</strong> Tulis nomor soal (<code class="text-amber-300">1. ...</code>), pilihan <code class="text-amber-300">A.</code> sampai <code class="text-amber-300">D.</code>, lalu baris <code class="text-emerald-300">Jawaban: B</code> (atau beri tanda <code class="text-emerald-300">*</code> di akhir pilihan benar).
+              </p>
+              <p class="leading-relaxed">
+                <strong>CSV (.csv):</strong> Kolom <code class="text-amber-300">Pertanyaan,A,B,C,D,Jawaban</code> (kunci jawaban cukup huruf A/B/C/D).
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Preview of Imported Questions -->
+        <div id="import-preview-panel" class="hidden glass rounded-3xl p-5 sm:p-6 space-y-4 anim-pop">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+            <div>
+              <h3 class="text-lg font-black flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check-circle-2" class="lucide lucide-check-circle-2 w-5 h-5 text-emerald-400"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+                <span>Pratinjau Soal Terdeteksi (<span id="preview-q-count">0</span> Soal)</span>
+              </h3>
+              <p class="text-xs text-violet-300">Kamu bisa edit cepat atau tambah soal manual sebelum diterbitkan ke siswa.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="btn-add-draft-q" type="button" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="plus" class="lucide lucide-plus w-4 h-4"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> Tambah Soal
+              </button>
+              <button id="btn-publish-quiz" type="button" class="btn-3d px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-extrabold text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="rocket" class="lucide lucide-rocket w-4 h-4"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path></svg>
+                <span>Terbitkan Kuis Sekarang</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="import-preview-list" class="space-y-3 max-h-[480px] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+
+      <!-- ===== TAB 2: KELOLA KUIS ===== -->
+      <div id="tab-manage" class="hidden space-y-4">
+        <div id="teacher-quiz-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+      </div>
+
+      <!-- ===== TAB 3: REKAP NILAI ===== -->
+      <div id="tab-scores" class="hidden space-y-5">
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div class="glass rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Total Pengerjaan</div>
+            <div id="kpi-total-attempts" class="text-2xl font-black text-white mt-1">0</div>
+          </div>
+          <div class="glass rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Rata-Rata Skor</div>
+            <div id="kpi-avg-score" class="text-2xl font-black text-amber-300 mt-1">0</div>
+          </div>
+          <div class="glass rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Akurasi Rata-Rata</div>
+            <div id="kpi-avg-acc" class="text-2xl font-black text-emerald-400 mt-1">0%</div>
+          </div>
+          <div class="glass rounded-2xl p-4">
+            <div class="text-xs text-violet-300 font-semibold">Skor Tertinggi</div>
+            <div id="kpi-top-score" class="text-2xl font-black text-fuchsia-400 mt-1">0</div>
+          </div>
+        </div>
+
+        <!-- Filter & Export Bar -->
+        <div class="glass rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2.5">
+            <select id="filter-score-quiz" class="px-3.5 py-2 rounded-xl bg-black/40 border border-white/15 text-sm text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+              <option value="all">Semua Kuis</option>
+            </select>
+            <input id="filter-score-search" type="text" placeholder="Cari nama siswa..." class="px-3.5 py-2 rounded-xl bg-black/40 border border-white/15 text-sm text-white placeholder-violet-300/60 focus:outline-none focus:ring-2 focus:ring-fuchsia-400">
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btn-export-scores" type="button" class="btn-3d px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="file-spreadsheet" class="lucide lucide-file-spreadsheet w-4 h-4"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M8 13h2"></path><path d="M14 13h2"></path><path d="M8 17h2"></path><path d="M14 17h2"></path></svg>
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Scores Table -->
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="bg-white/5 text-violet-300 text-xs uppercase">
+                <tr>
+                  <th class="px-4 py-3">#</th>
+                  <th class="px-4 py-3">Nama Siswa</th>
+                  <th class="px-4 py-3">Kuis</th>
+                  <th class="px-4 py-3 text-right">Benar</th>
+                  <th class="px-4 py-3 text-right">Akurasi</th>
+                  <th class="px-4 py-3 text-right">Streak</th>
+                  <th class="px-4 py-3 text-right">Skor</th>
+                </tr>
+              </thead>
+              <tbody id="teacher-scores-body" class="divide-y divide-white/10"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==================== MODAL: PUBLISHED SUCCESS ==================== -->
+  <div id="modal-published" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="glass rounded-3xl max-w-md w-full p-6 text-center space-y-5 anim-pop">
+      <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/40">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="party-popper" class="lucide lucide-party-popper w-8 h-8 text-white"><path d="M5.8 11.3 2 22l10.7-3.79"></path><path d="M4 3h.01"></path><path d="M22 8h.01"></path><path d="M15 2h.01"></path><path d="M22 20h.01"></path><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"></path><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"></path><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"></path><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"></path></svg>
+      </div>
+      <div class="space-y-1">
+        <h3 class="text-xl font-black">Kuis Berhasil Diterbitkan!</h3>
+        <p id="modal-pub-title" class="text-sm text-violet-200"></p>
+      </div>
+      <div class="p-4 rounded-2xl bg-black/35 border border-white/10 space-y-1">
+        <div class="text-xs text-violet-300 uppercase tracking-wider font-bold">Bagikan Kode Ini ke Siswa</div>
+        <div id="modal-pub-code" class="text-3xl font-black font-mono tracking-widest text-amber-300"></div>
+      </div>
+      <div class="flex flex-wrap gap-2.5 justify-center">
+        <button id="btn-modal-copy-code" type="button" class="btn-3d px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-sm font-bold flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="copy" class="lucide lucide-copy w-4 h-4"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg> Salin Kode
+        </button>
+        <button id="btn-modal-test-student" type="button" class="btn-3d px-4 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white text-sm font-extrabold flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play" class="lucide lucide-play w-4 h-4"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg> Tes di Mode Siswa
+        </button>
+      </div>
+      <button id="btn-modal-close-pub" type="button" class="text-xs text-violet-300 hover:text-white underline">Tutup</button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: CONFIRM DELETE ==================== -->
+  <div id="modal-confirm" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="glass rounded-3xl max-w-sm w-full p-6 text-center space-y-4 anim-pop">
+      <div class="w-12 h-12 mx-auto rounded-2xl bg-rose-500/20 border border-rose-400/40 flex items-center justify-center text-rose-400">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="trash-2" class="lucide lucide-trash-2 w-6 h-6"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" x2="10" y1="11" y2="17"></line><line x1="14" x2="14" y1="11" y2="17"></line></svg>
+      </div>
+      <h3 class="text-lg font-black">Hapus Kuis Ini?</h3>
+      <p id="modal-confirm-text" class="text-sm text-violet-200"></p>
+      <div class="flex gap-2.5 justify-center pt-1">
+        <button id="btn-confirm-cancel" type="button" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold">Batal</button>
+        <button id="btn-confirm-yes" type="button" class="btn-3d px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold">Ya, Hapus</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: EDIT QUIZ QUESTIONS ==================== -->
+  <div id="modal-edit-quiz" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="glass rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden anim-pop">
+      <div class="p-5 border-b border-white/10 flex items-center justify-between">
+        <div>
+          <h3 id="edit-modal-title" class="text-lg font-black">Edit Soal Kuis</h3>
+          <p class="text-xs text-violet-300">Perubahan akan langsung tersimpan pada kuis aktif.</p>
+        </div>
+        <button id="btn-close-edit-modal" type="button" class="p-2 rounded-xl bg-white/10 hover:bg-white/20">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="x" class="lucide lucide-x w-4 h-4"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+        </button>
+      </div>
+      <div id="edit-modal-body" class="p-5 overflow-y-auto space-y-3 flex-1"></div>
+      <div class="p-4 border-t border-white/10 flex items-center justify-between gap-2 bg-black/20">
+        <button id="btn-edit-add-q" type="button" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="plus" class="lucide lucide-plus w-4 h-4"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg> Tambah Soal
+        </button>
+        <button id="btn-edit-save" type="button" class="btn-3d px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-extrabold">
+          Simpan Perubahan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: CLOUD FIREBASE & PUBLISH ==================== -->
+  <div id="modal-cloud-setup" class="fixed inset-0 z-50 items-center justify-center bg-black/75 backdrop-blur-sm p-4 flex">
+    <div class="glass rounded-3xl max-w-xl w-full max-h-[88vh] flex flex-col overflow-hidden anim-pop">
+      <div class="p-5 border-b border-white/10 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="cloud-upload" class="lucide lucide-cloud-upload w-5 h-5"><path d="M12 13v8"></path><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="m8 17 4-4 4 4"></path></svg>
+          </div>
+          <div>
+            <h3 class="text-lg font-black">Hubungkan Firebase &amp; Siap Publish</h3>
+            <p class="text-xs text-violet-300">Sinkronisasi real-time antar perangkat Guru &amp; Siswa via Cloud Firestore.</p>
+          </div>
+        </div>
+        <button id="btn-close-cloud-modal" type="button" class="p-2 rounded-xl bg-white/10 hover:bg-white/20">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="x" class="lucide lucide-x w-4 h-4"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+        </button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4 text-sm">
+        <div id="cloud-status-banner" class="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs flex items-center gap-2.5"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="info" class="lucide lucide-info w-4 h-4 shrink-0"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg><span>Saat ini berjalan di <strong>Mode Lokal</strong>. Tempel konfigurasi Firebase di bawah agar data kuis &amp; skor tersinkronisasi online.</span></div>
+
+        <ol class="space-y-2 text-xs text-violet-200 list-decimal list-inside bg-black/25 p-4 rounded-2xl border border-white/10">
+          <li>Buka <strong>Firebase Console</strong>, buat project baru (gratis), lalu aktifkan <strong>Firestore Database</strong> (pilih <em>Test mode</em> saat mulai).</li>
+          <li>Masuk ke <strong>Project Settings → Your apps → Web (&lt;/&gt;)</strong>, lalu salin objek <code class="text-amber-300">firebaseConfig</code>.</li>
+          <li>Tempel isi <code class="text-amber-300">firebaseConfig</code> ke kotak di bawah lalu klik <strong>Simpan &amp; Hubungkan</strong>.</li>
+          <li>Klik <strong>Unduh index.html Siap Publish</strong>, lalu upload ke <strong>Netlify Drop</strong> atau <strong>GitHub Pages</strong>.</li>
+        </ol>
+
+        <div class="space-y-1.5">
+          <label for="input-firebase-config" class="block text-xs font-bold text-violet-200">Tempel firebaseConfig (format JSON atau JS objek dari Firebase Console):</label>
+          <textarea id="input-firebase-config" rows="6" placeholder="{
+  &quot;apiKey&quot;: &quot;AIzaSy...&quot;,
+  &quot;authDomain&quot;: &quot;proyekmu.firebaseapp.com&quot;,
+  &quot;projectId&quot;: &quot;proyekmu&quot;,
+  &quot;storageBucket&quot;: &quot;proyekmu.firebasestorage.app&quot;,
+  &quot;messagingSenderId&quot;: &quot;123456789&quot;,
+  &quot;appId&quot;: &quot;1:123456789:web:abcdef&quot;
+}" class="w-full p-3.5 rounded-xl bg-black/40 border border-white/15 text-xs font-mono text-cyan-200 placeholder-violet-400/50 focus:outline-none focus:ring-2 focus:ring-cyan-400"></textarea>
+        </div>
+      </div>
+      <div class="p-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 bg-black/20">
+        <button id="btn-disconnect-cloud" type="button" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-rose-500/25 text-xs font-bold text-violet-200 hover:text-rose-200">
+          Putuskan (Mode Lokal)
+        </button>
+        <div class="flex flex-wrap gap-2">
+          <button id="btn-download-publish-html" type="button" class="btn-3d px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="download" class="lucide lucide-download w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg> Unduh index.html
+          </button>
+          <button id="btn-save-cloud-config" type="button" class="btn-3d px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-extrabold flex items-center gap-1.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="plug-zap" class="lucide lucide-plug-zap w-4 h-4"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"></path><path d="m2 22 3-3"></path><path d="M7.5 13.5 10 11"></path><path d="M10.5 16.5 13 14"></path><path d="m18 3-4 4h6l-4 4"></path></svg> Simpan &amp; Hubungkan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* =========================================================================
+         KONFIGURASI FIREBASE FIRESTORE (UNTUK PUBLISH ONLINE REAL-TIME)
+         Isi konfigurasi di bawah dari Firebase Console (Project Settings -> Web App)
+         agar kuis dari Guru dan skor dari Siswa tersinkronisasi antar perangkat.
+         Jika dikosongkan, aplikasi otomatis berjalan di Mode Lokal (localStorage).
+      ========================================================================= */
+      const FIREBASE_CONFIG = {
+        apiKey: "",
+        authDomain: "",
+        projectId: "",
+        storageBucket: "",
+        messagingSenderId: "",
+        appId: ""
+      };
+      const CLOUD_CFG_STORAGE_KEY = 'quizspark_firebase_cfg_v1';
+
+      /* ======================== AUDIO ENGINE (Web Audio API) ======================== */
+      const Sound = {
+        enabled: true,
+        ctx: null,
+        init() {
+          if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        },
+        tone(freq, duration = 0.14, type = 'sine', gainVal = 0.12, delay = 0) {
+          if (!this.enabled) return;
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime + delay;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(gainVal, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration);
+        },
+        correct(streak) {
+          const base = 523.25 + Math.min(streak, 5) * 40;
+          this.tone(base, 0.12, 'triangle', 0.14, 0);
+          this.tone(base * 1.25, 0.16, 'triangle', 0.14, 0.08);
+          this.tone(base * 1.5, 0.24, 'triangle', 0.14, 0.16);
+        },
+        wrong() {
+          this.tone(220, 0.18, 'sawtooth', 0.09, 0);
+          this.tone(175, 0.28, 'sawtooth', 0.09, 0.12);
+        },
+        tick() {
+          this.tone(880, 0.05, 'sine', 0.05, 0);
+        },
+        countdown(final) {
+          this.tone(final ? 880 : 440, final ? 0.3 : 0.14, 'triangle', 0.13, 0);
+        },
+        victory() {
+          [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+            this.tone(f, 0.25, 'triangle', 0.14, idx * 0.1);
+          });
+        }
+      };
+
+      /* ======================== DEFAULT DATA & STORAGE ======================== */
+      const STORAGE_KEY = 'quizspark_state_v1';
+
+      const DEFAULT_QUIZZES = [
+        {
+          id: 'qz-web101',
+          code: 'WEB101',
+          title: 'Dasar Pemrograman Web Modern',
+          subject: 'Informatika',
+          timerPerQuestion: 20,
+          createdAt: '2026-11-18',
+          questions: [
+            {
+              question: 'Tag HTML semantik manakah yang paling tepat untuk membungkus menu navigasi utama?',
+              options: ['<div>', '<nav>', '<section>', '<aside>'],
+              answer: 1
+            },
+            {
+              question: 'Properti CSS Flexbox untuk meratakan elemen secara horizontal di tengah adalah?',
+              options: ['align-items: center', 'justify-content: center', 'text-align: middle', 'float: center'],
+              answer: 1
+            },
+            {
+              question: 'Method JavaScript yang digunakan untuk mengambil elemen berdasarkan ID adalah?',
+              options: ['document.queryId()', 'document.getElementById()', 'document.findId()', 'window.selectId()'],
+              answer: 1
+            },
+            {
+              question: 'Status kode HTTP 404 menandakan bahwa...',
+              options: ['Server error internal', 'Permintaan berhasil', 'Halaman atau resource tidak ditemukan', 'Akses ditolak tanpa login'],
+              answer: 2
+            },
+            {
+              question: 'Manakah yang termasuk tipe data primitif di JavaScript?',
+              options: ['Array', 'Object', 'Boolean', 'Function'],
+              answer: 2
+            }
+          ]
+        },
+        {
+          id: 'qz-algo202',
+          code: 'ALGO26',
+          title: 'Algoritma & Struktur Data',
+          subject: 'Ilmu Komputer',
+          timerPerQuestion: 25,
+          createdAt: '2026-11-19',
+          questions: [
+            {
+              question: 'Struktur data yang bekerja dengan prinsip LIFO (Last In, First Out) adalah?',
+              options: ['Queue', 'Stack', 'Linked List', 'Binary Tree'],
+              answer: 1
+            },
+            {
+              question: 'Kompleksitas waktu terbaik dari algoritma Binary Search pada array terurut adalah?',
+              options: ['O(n)', 'O(n²)', 'O(log n)', 'O(n log n)'],
+              answer: 2
+            },
+            {
+              question: 'Pada Queue (antrean), elemen yang pertama kali masuk akan...',
+              options: ['Keluar paling akhir', 'Keluar paling pertama', 'Dihapus secara acak', 'Disimpan di tengah'],
+              answer: 1
+            },
+            {
+              question: 'Algoritma pengurutan yang membagi array menjadi dua bagian lalu menggabungkannya kembali secara terurut adalah?',
+              options: ['Bubble Sort', 'Selection Sort', 'Merge Sort', 'Insertion Sort'],
+              answer: 2
+            }
+          ]
+        }
+      ];
+
+      const DEFAULT_SCORES = [
+        { id: 'sc-1', quizId: 'qz-web101', studentName: 'Nadia Putri', score: 4420, correct: 5, total: 5, accuracy: 100, bestStreak: 5, date: '2026-11-19 14:20' },
+        { id: 'sc-2', quizId: 'qz-web101', studentName: 'Dimas Arya', score: 3580, correct: 4, total: 5, accuracy: 80, bestStreak: 3, date: '2026-11-19 15:05' },
+        { id: 'sc-3', quizId: 'qz-web101', studentName: 'Siti Aisyah', score: 2910, correct: 4, total: 5, accuracy: 80, bestStreak: 2, date: '2026-11-19 16:12' },
+        { id: 'sc-4', quizId: 'qz-algo202', studentName: 'Fajar Ramadhan', score: 3450, correct: 4, total: 4, accuracy: 100, bestStreak: 4, date: '2026-11-20 09:40' },
+        { id: 'sc-5', quizId: 'qz-algo202', studentName: 'Laila Rahma', score: 2490, correct: 3, total: 4, accuracy: 75, bestStreak: 2, date: '2026-11-20 10:15' }
+      ];
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed.quizzes) && Array.isArray(parsed.scores)) {
+              return parsed;
+            }
+          }
+        } catch (e) {}
+        return { quizzes: JSON.parse(JSON.stringify(DEFAULT_QUIZZES)), scores: JSON.parse(JSON.stringify(DEFAULT_SCORES)) };
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ quizzes: state.quizzes, scores: state.scores }));
+        } catch (e) {}
+      }
+
+      /* ======================== CLOUD FIRESTORE ADAPTER ======================== */
+      const CloudDB = {
+        db: null,
+        connected: false,
+        unsubQuizzes: null,
+        unsubScores: null,
+        activeConfig: null,
+
+        getStoredConfig() {
+          if (FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId) {
+            return FIREBASE_CONFIG;
+          }
+          try {
+            const raw = localStorage.getItem(CLOUD_CFG_STORAGE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && parsed.apiKey && parsed.projectId) return parsed;
+            }
+          } catch (e) {}
+          return null;
+        },
+
+        parseConfigInput(text) {
+          const cleaned = text
+            .replace(/^(?:const|let|var)\s+\w+\s*=\s*/i, '')
+            .replace(/;\s*$/, '')
+            .trim();
+          // Convert JS object keys without quotes to valid JSON
+          const jsonReady = cleaned
+            .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
+            .replace(/'/g, '"')
+            .replace(/,\s*}/g, '}');
+          const obj = JSON.parse(jsonReady);
+          if (!obj.apiKey || !obj.projectId) {
+            throw new Error('Konfigurasi harus memiliki minimal apiKey dan projectId.');
+          }
+          return obj;
+        },
+
+        updateBadge(isConnected, projectId = '') {
+          const btn = $('btn-cloud-status');
+          const dot = $('cloud-dot');
+          const lbl = $('cloud-label');
+          const banner = $('cloud-status-banner');
+          if (!btn || !dot || !lbl) return;
+          if (isConnected) {
+            btn.className = 'hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 hover:bg-emerald-500/30 transition-colors text-xs font-bold text-emerald-300';
+            dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+            lbl.textContent = 'Cloud Live';
+            if (banner) {
+              banner.className = 'p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-400/35 text-emerald-200 text-xs flex items-center gap-2.5';
+              banner.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 shrink-0"></i><span>Terhubung real-time ke Firebase Firestore (<strong>${escapeHtml(projectId)}</strong>). Kuis &amp; skor otomatis sinkron antar perangkat!</span>`;
+              if (window.lucide) lucide.createIcons({ nodes: [banner] });
+            }
+          } else {
+            btn.className = 'hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass-light hover:bg-white/15 transition-colors text-xs font-bold text-amber-300';
+            dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+            lbl.textContent = 'Mode Lokal';
+            if (banner) {
+              banner.className = 'p-3.5 rounded-2xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs flex items-center gap-2.5';
+              banner.innerHTML = `<i data-lucide="info" class="w-4 h-4 shrink-0"></i><span>Saat ini berjalan di <strong>Mode Lokal</strong>. Tempel konfigurasi Firebase di bawah agar data kuis &amp; skor tersinkronisasi online.</span>`;
+              if (window.lucide) lucide.createIcons({ nodes: [banner] });
+            }
+          }
+        },
+
+        disconnect() {
+          if (this.unsubQuizzes) { this.unsubQuizzes(); this.unsubQuizzes = null; }
+          if (this.unsubScores) { this.unsubScores(); this.unsubScores = null; }
+          this.connected = false;
+          this.db = null;
+          this.activeConfig = null;
+          try { localStorage.removeItem(CLOUD_CFG_STORAGE_KEY); } catch (e) {}
+          this.updateBadge(false);
+        },
+
+        connect(cfg, silent = false) {
+          if (!window.firebase || !window.firebase.firestore) {
+            if (!silent) showToast('SDK Firebase belum termuat. Periksa koneksi internet.', 'error');
+            return false;
+          }
+          try {
+            if (this.unsubQuizzes) this.unsubQuizzes();
+            if (this.unsubScores) this.unsubScores();
+            const appName = 'quizspark-' + cfg.projectId;
+            let app = window.firebase.apps.find(a => a.name === appName);
+            if (!app) app = window.firebase.initializeApp(cfg, appName);
+            this.db = app.firestore();
+            this.activeConfig = cfg;
+            this.connected = true;
+            this.updateBadge(true, cfg.projectId);
+
+            // Real-time listener: Quizzes
+            this.unsubQuizzes = this.db.collection('quizzes').onSnapshot((snap) => {
+              if (snap.empty) {
+                // Seed starter quizzes once so live app is immediately playable
+                DEFAULT_QUIZZES.forEach(q => this.saveQuiz(q));
+                return;
+              }
+              const list = [];
+              snap.forEach(doc => list.push(doc.data()));
+              list.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+              state.quizzes = list;
+              saveState();
+              if (!$('view-student-home').classList.contains('hidden')) renderStudentQuizGrid();
+              if (state.teacherLoggedIn && state.teacherTab === 'manage') renderTeacherQuizzes();
+              $('count-quizzes').textContent = state.quizzes.length;
+            }, () => {
+              if (!silent) showToast('Gagal sinkron Firestore. Pastikan Firestore aktif & rules mengizinkan akses.', 'error');
+            });
+
+            // Real-time listener: Scores
+            this.unsubScores = this.db.collection('scores').onSnapshot((snap) => {
+              const list = [];
+              snap.forEach(doc => list.push(doc.data()));
+              list.sort((a, b) => b.score - a.score);
+              state.scores = list;
+              saveState();
+              if (state.teacherLoggedIn && state.teacherTab === 'scores') renderTeacherScores();
+            });
+
+            if (!silent) showToast(`Berhasil terhubung ke Firebase (${cfg.projectId})!`, 'success');
+            return true;
+          } catch (err) {
+            this.connected = false;
+            this.updateBadge(false);
+            if (!silent) showToast('Konfigurasi Firebase tidak valid: ' + err.message, 'error');
+            return false;
+          }
+        },
+
+        saveQuiz(quiz) {
+          if (this.connected && this.db) {
+            this.db.collection('quizzes').doc(quiz.id).set(quiz).catch(() => {});
+          }
+        },
+
+        deleteQuiz(quizId) {
+          if (this.connected && this.db) {
+            this.db.collection('quizzes').doc(quizId).delete().catch(() => {});
+          }
+        },
+
+        saveScore(record) {
+          if (this.connected && this.db) {
+            this.db.collection('scores').doc(record.id).set(record).catch(() => {});
+          }
+        }
+      };
+
+      const persisted = loadState();
+      const state = {
+        role: 'student', // 'student' | 'teacher'
+        teacherLoggedIn: false,
+        teacherTab: 'import', // 'import' | 'manage' | 'scores'
+        quizzes: persisted.quizzes,
+        scores: persisted.scores,
+        draftQuestions: [],
+        editingQuizId: null,
+        pendingDeleteId: null,
+        lastPublishedCode: '',
+        play: {
+          quiz: null,
+          studentName: '',
+          index: 0,
+          score: 0,
+          streak: 0,
+          bestStreak: 0,
+          correctCount: 0,
+          timeLeft: 0,
+          maxTime: 20,
+          timerId: null,
+          answered: false,
+          history: []
+        }
+      };
+
+      /* ======================== HELPERS ======================== */
+      const $ = (id) => document.getElementById(id);
+
+      function escapeHtml(str) {
+        return String(str ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function generateCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let out = 'QZ';
+        for (let i = 0; i < 4; i++) out += chars[Math.floor(Math.random() * chars.length)];
+        return out;
+      }
+
+      function showToast(message, type = 'info') {
+        const container = $('toast-container');
+        const colors = {
+          success: 'bg-emerald-600/95 border-emerald-400/50 text-white',
+          error: 'bg-rose-600/95 border-rose-400/50 text-white',
+          info: 'bg-violet-700/95 border-violet-400/50 text-white'
+        };
+        const icons = { success: 'check-circle-2', error: 'alert-circle', info: 'info' };
+        const el = document.createElement('div');
+        el.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl border shadow-xl text-sm font-semibold anim-pop ${colors[type] || colors.info}`;
+        el.innerHTML = `<i data-lucide="${icons[type] || 'info'}" class="w-4 h-4 shrink-0"></i><span>${escapeHtml(message)}</span>`;
+        container.appendChild(el);
+        if (window.lucide) lucide.createIcons({ nodes: [el] });
+        setTimeout(() => {
+          el.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(-8px)';
+          setTimeout(() => el.remove(), 260);
+        }, 3000);
+      }
+
+      function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => showToast(`Kode "${text}" berhasil disalin!`, 'success')).catch(() => fallbackCopy(text));
+        } else {
+          fallbackCopy(text);
+        }
+      }
+
+      function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast(`Kode "${text}" berhasil disalin!`, 'success');
+        } catch (e) {
+          showToast(`Kode kuis: ${text}`, 'info');
+        }
+        ta.remove();
+      }
+
+      function fireConfetti(big = false) {
+        if (typeof window.confetti !== 'function') return;
+        window.confetti({
+          particleCount: big ? 110 : 45,
+          spread: big ? 85 : 60,
+          origin: { y: big ? 0.55 : 0.7 },
+          colors: ['#a855f7', '#ec4899', '#f59e0b', '#10b981', '#38bdf8']
+        });
+      }
+
+      function downloadFile(filename, content, mime = 'text/plain;charset=utf-8') {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      /* ======================== SMART FILE PARSER (.txt, .csv, .docx) ======================== */
+      function parseCSVLine(line) {
+        const result = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+            else inQuotes = !inQuotes;
+          } else if ((ch === ',' || ch === ';') && !inQuotes) {
+            result.push(cur.trim());
+            cur = '';
+          } else {
+            cur += ch;
+          }
+        }
+        result.push(cur.trim());
+        return result;
+      }
+
+      function parseCSVQuestions(text) {
+        const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+        const out = [];
+        const letterMap = { a: 0, b: 1, c: 2, d: 3, '1': 0, '2': 1, '3': 2, '4': 3 };
+        lines.forEach((line, idx) => {
+          const cols = parseCSVLine(line);
+          if (cols.length < 6) return;
+          if (idx === 0 && /pertanyaan|soal|question/i.test(cols[0])) return;
+          const ansRaw = cols[5].trim().toLowerCase().charAt(0);
+          const answer = ansRaw in letterMap ? letterMap[ansRaw] : 0;
+          out.push({
+            question: cols[0],
+            options: [cols[1], cols[2], cols[3], cols[4]],
+            answer
+          });
+        });
+        return out;
+      }
+
+      function parseTextQuestions(rawText) {
+        const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').map(l => l.trim()).filter(Boolean);
+        const questions = [];
+        let current = null;
+        const letterToIdx = { A: 0, B: 1, C: 2, D: 3 };
+
+        const flushCurrent = () => {
+          if (!current) return;
+          if (current.question && current.options.filter(Boolean).length >= 2) {
+            while (current.options.length < 4) current.options.push('-');
+            questions.push({
+              question: current.question.trim(),
+              options: current.options.slice(0, 4).map(o => o.trim()),
+              answer: current.answer >= 0 && current.answer <= 3 ? current.answer : 0
+            });
+          }
+          current = null;
+        };
+
+        for (const line of lines) {
+          // Answer key line: Jawaban: B / Kunci: A / Answer: C
+          const ansMatch = line.match(/^(?:jawaban|kunci|kunci jawaban|answer)\s*[:=\-]\s*([A-Da-d])/i);
+          if (ansMatch && current) {
+            current.answer = letterToIdx[ansMatch[1].toUpperCase()] ?? 0;
+            continue;
+          }
+
+          // Option line: A. Text / a) Text
+          const optMatch = line.match(/^([A-Da-d])[\.\)\-:]\s+(.+)$/);
+          if (optMatch && current) {
+            const idx = letterToIdx[optMatch[1].toUpperCase()];
+            let optText = optMatch[2].trim();
+            if (optText.endsWith('*')) {
+              optText = optText.slice(0, -1).trim();
+              current.answer = idx;
+            }
+            current.options[idx] = optText;
+            continue;
+          }
+
+          // Numbered question line: 1. Text / 1) Text
+          const qMatch = line.match(/^(?:soal\s*)?\d+[\.\)\-:]\s+(.+)$/i);
+          if (qMatch) {
+            flushCurrent();
+            current = { question: qMatch[1].trim(), options: ['', '', '', ''], answer: 0 };
+            continue;
+          }
+
+          // Continuation line
+          if (current) {
+            if (!current.options[0]) {
+              current.question += ' ' + line;
+            }
+          } else {
+            current = { question: line, options: ['', '', '', ''], answer: 0 };
+          }
+        }
+        flushCurrent();
+        return questions;
+      }
+
+      // Pure-JS DOCX extractor using browser native DecompressionStream (zero external deps!)
+      async function extractTextFromDocx(arrayBuffer) {
+        const view = new DataView(arrayBuffer);
+        const bytes = new Uint8Array(arrayBuffer);
+        let offset = 0;
+        const decoder = new TextDecoder('utf-8');
+
+        while (offset + 30 < bytes.length) {
+          const sig = view.getUint32(offset, true);
+          if (sig !== 0x04034b50) break; // ZIP local file header
+          const compression = view.getUint16(offset + 8, true);
+          const compSize = view.getUint32(offset + 18, true);
+          const nameLen = view.getUint16(offset + 26, true);
+          const extraLen = view.getUint16(offset + 28, true);
+          const fileName = decoder.decode(bytes.subarray(offset + 30, offset + 30 + nameLen));
+          const dataStart = offset + 30 + nameLen + extraLen;
+
+          // Handle data descriptor if compSize is 0
+          let actualCompSize = compSize;
+          if (actualCompSize === 0 && (view.getUint16(offset + 6, true) & 0x08)) {
+            let scan = dataStart;
+            while (scan + 4 < bytes.length) {
+              if (bytes[scan] === 0x50 && bytes[scan + 1] === 0x4b && (bytes[scan + 2] === 0x03 || bytes[scan + 2] === 0x01 || bytes[scan + 2] === 0x07)) {
+                break;
+              }
+              scan++;
+            }
+            actualCompSize = scan - dataStart;
+          }
+
+          if (fileName === 'word/document.xml') {
+            const compData = bytes.subarray(dataStart, dataStart + actualCompSize);
+            let xmlText = '';
+            if (compression === 0) {
+              xmlText = decoder.decode(compData);
+            } else if (compression === 8 && typeof DecompressionStream !== 'undefined') {
+              const ds = new DecompressionStream('deflate-raw');
+              const stream = new Blob([compData]).stream().pipeThrough(ds);
+              xmlText = await new Response(stream).text();
+            } else {
+              throw new Error('Browser tidak mendukung dekompresi DOCX. Gunakan format .txt atau .csv.');
+            }
+            const xmlDoc = new DOMParser().parseFromString(xmlText, 'application/xml');
+            const paragraphs = Array.from(xmlDoc.getElementsByTagName('w:p'));
+            const lines = paragraphs.map(p => {
+              const texts = Array.from(p.getElementsByTagName('w:t')).map(t => t.textContent || '');
+              return texts.join('');
+            }).filter(l => l.trim().length > 0);
+            return lines.join('\n');
+          }
+
+          offset = dataStart + actualCompSize;
+        }
+        throw new Error('Isi dokumen Word (word/document.xml) tidak ditemukan.');
+      }
+
+      async function handleUploadedFile(file) {
+        if (!file) return;
+        const ext = file.name.split('.').pop().toLowerCase();
+        try {
+          let extracted = '';
+          let parsed = [];
+          if (ext === 'csv') {
+            extracted = await file.text();
+            parsed = parseCSVQuestions(extracted);
+          } else if (ext === 'txt') {
+            extracted = await file.text();
+            parsed = parseTextQuestions(extracted);
+          } else if (ext === 'docx') {
+            const buf = await file.arrayBuffer();
+            extracted = await extractTextFromDocx(buf);
+            parsed = parseTextQuestions(extracted);
+          } else {
+            showToast('Format belum didukung. Gunakan file .docx, .txt, atau .csv.', 'error');
+            return;
+          }
+
+          $('textarea-raw-import').value = extracted;
+          if (!parsed.length) {
+            showToast('File terbaca, tapi format soal belum dikenali. Cek contoh format di samping.', 'error');
+            return;
+          }
+
+          state.draftQuestions = parsed;
+          if (!$('new-quiz-title').value.trim()) {
+            const cleanName = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+            $('new-quiz-title').value = cleanName;
+          }
+          if (!$('new-quiz-subject').value.trim()) {
+            $('new-quiz-subject').value = 'Umum';
+          }
+          renderDraftPreview();
+          showToast(`Berhasil membaca ${parsed.length} soal dari "${file.name}"!`, 'success');
+          fireConfetti(false);
+        } catch (err) {
+          showToast(err.message || 'Gagal membaca file soal.', 'error');
+        }
+      }
+
+      /* ======================== NAVIGATION & VIEW RENDERING ======================== */
+      function clearPlayTimer() {
+        if (state.play.timerId) {
+          clearInterval(state.play.timerId);
+          state.play.timerId = null;
+        }
+      }
+
+      function hideAllViews() {
+        ['view-student-home', 'view-quiz-play', 'view-quiz-result', 'view-teacher-login', 'view-teacher-dashboard']
+          .forEach(id => $(id).classList.add('hidden'));
+      }
+
+      function updateNavUI() {
+        const sBtn = $('nav-student');
+        const tBtn = $('nav-teacher');
+        if (state.role === 'student') {
+          sBtn.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow';
+          tBtn.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all text-violet-300 hover:text-white';
+        } else {
+          tBtn.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow';
+          sBtn.className = 'px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all text-violet-300 hover:text-white';
+        }
+      }
+
+      function showStudentHome() {
+        clearPlayTimer();
+        state.role = 'student';
+        updateNavUI();
+        hideAllViews();
+        $('view-student-home').classList.remove('hidden');
+        renderStudentQuizGrid();
+      }
+
+      function showTeacherArea() {
+        clearPlayTimer();
+        state.role = 'teacher';
+        updateNavUI();
+        hideAllViews();
+        if (!state.teacherLoggedIn) {
+          $('view-teacher-login').classList.remove('hidden');
+        } else {
+          $('view-teacher-dashboard').classList.remove('hidden');
+          if (!$('new-quiz-code').value) $('new-quiz-code').value = generateCode();
+          switchTeacherTab(state.teacherTab);
+        }
+      }
+
+      /* ======================== STUDENT HOME ======================== */
+      function renderStudentQuizGrid() {
+        const query = ($('input-search-quiz').value || '').trim().toLowerCase();
+        const grid = $('student-quiz-grid');
+        const filtered = state.quizzes.filter(q =>
+          q.title.toLowerCase().includes(query) ||
+          q.subject.toLowerCase().includes(query) ||
+          q.code.toLowerCase().includes(query)
+        );
+
+        if (!filtered.length) {
+          grid.innerHTML = `<div class="col-span-full glass rounded-2xl p-8 text-center text-violet-300 text-sm">Tidak ada kuis yang cocok dengan pencarianmu.</div>`;
+          return;
+        }
+
+        const gradients = [
+          'from-violet-600 to-fuchsia-600',
+          'from-blue-600 to-cyan-500',
+          'from-emerald-600 to-teal-500',
+          'from-amber-500 to-rose-500'
+        ];
+
+        grid.innerHTML = filtered.map((q, idx) => {
+          const attempts = state.scores.filter(s => s.quizId === q.id).length;
+          const grad = gradients[idx % gradients.length];
+          return `
+            <div class="glass rounded-2xl overflow-hidden flex flex-col justify-between group hover:-translate-y-1 transition-all duration-200 hover:shadow-xl hover:shadow-violet-900/40">
+              <div>
+                <div class="h-24 bg-gradient-to-br ${grad} p-4 flex flex-col justify-between relative overflow-hidden">
+                  <div class="flex items-center justify-between gap-2 relative z-10">
+                    <span class="px-2.5 py-0.5 rounded-full bg-black/30 text-white text-[11px] font-bold backdrop-blur-sm">${escapeHtml(q.subject)}</span>
+                    <button type="button" data-copy-code="${escapeHtml(q.code)}" class="px-2.5 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white font-mono text-xs font-extrabold flex items-center gap-1 transition-colors" title="Salin Kode">
+                      <span>${escapeHtml(q.code)}</span>
+                      <i data-lucide="copy" class="w-3 h-3"></i>
+                    </button>
+                  </div>
+                  <div class="text-white/90 text-xs font-semibold flex items-center gap-3 relative z-10">
+                    <span class="flex items-center gap-1"><i data-lucide="help-circle" class="w-3.5 h-3.5"></i> ${q.questions.length} Soal</span>
+                    <span class="flex items-center gap-1"><i data-lucide="timer" class="w-3.5 h-3.5"></i> ${q.timerPerQuestion}s/soal</span>
+                  </div>
+                </div>
+                <div class="p-4 space-y-2">
+                  <h3 class="font-extrabold text-base text-white leading-snug">${escapeHtml(q.title)}</h3>
+                  <p class="text-xs text-violet-300">${attempts} kali dimainkan siswa</p>
+                </div>
+              </div>
+              <div class="px-4 pb-4">
+                <button type="button" data-play-quiz="${escapeHtml(q.id)}" class="btn-3d w-full py-2.5 rounded-xl bg-white/10 hover:bg-gradient-to-r hover:from-fuchsia-500 hover:to-violet-600 text-white font-bold text-sm flex items-center justify-center gap-1.5 transition-all">
+                  <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                  <span>Mainkan Sekarang</span>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        if (window.lucide) lucide.createIcons({ nodes: [grid] });
+
+        grid.querySelectorAll('[data-copy-code]').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyToClipboard(btn.getAttribute('data-copy-code'));
+          });
+        });
+
+        grid.querySelectorAll('[data-play-quiz]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const qId = btn.getAttribute('data-play-quiz');
+            const quiz = state.quizzes.find(x => x.id === qId);
+            if (!quiz) return;
+            const nameInput = $('input-student-name');
+            const name = nameInput.value.trim() || 'Siswa Tamu';
+            if (!nameInput.value.trim()) nameInput.value = name;
+            startQuizCountdown(quiz, name);
+          });
+        });
+      }
+
+      /* ======================== QUIZ PLAY ENGINE ======================== */
+      function startQuizCountdown(quiz, studentName) {
+        if (!quiz.questions || !quiz.questions.length) {
+          showToast('Kuis ini belum memiliki soal.', 'error');
+          return;
+        }
+        clearPlayTimer();
+        state.play = {
+          quiz,
+          studentName,
+          index: 0,
+          score: 0,
+          streak: 0,
+          bestStreak: 0,
+          correctCount: 0,
+          timeLeft: quiz.timerPerQuestion || 20,
+          maxTime: quiz.timerPerQuestion || 20,
+          timerId: null,
+          answered: false,
+          history: []
+        };
+
+        const overlay = $('overlay-countdown');
+        const numEl = $('countdown-number');
+        $('countdown-quiz-title').textContent = quiz.title;
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+
+        let count = 3;
+        const step = () => {
+          numEl.classList.remove('anim-countdown');
+          void numEl.offsetWidth;
+          numEl.classList.add('anim-countdown');
+          if (count > 0) {
+            numEl.textContent = count;
+            Sound.countdown(false);
+            count--;
+            setTimeout(step, 650);
+          } else {
+            numEl.textContent = 'MULAI!';
+            Sound.countdown(true);
+            setTimeout(() => {
+              overlay.classList.add('hidden');
+              overlay.classList.remove('flex');
+              hideAllViews();
+              $('view-quiz-play').classList.remove('hidden');
+              renderCurrentQuestion();
+            }, 520);
+          }
+        };
+        step();
+      }
+
+      function renderCurrentQuestion() {
+        clearPlayTimer();
+        const p = state.play;
+        const q = p.quiz.questions[p.index];
+        p.answered = false;
+        p.maxTime = p.quiz.timerPerQuestion || 20;
+        p.timeLeft = p.maxTime;
+
+        $('play-quiz-title').textContent = p.quiz.title;
+        $('play-q-counter').textContent = `Soal ${p.index + 1} / ${p.quiz.questions.length}`;
+        $('play-score').textContent = p.score.toLocaleString('id-ID');
+
+        // Streak badge
+        const streakBadge = $('play-streak-badge');
+        if (p.streak >= 2) {
+          streakBadge.classList.remove('hidden');
+          streakBadge.classList.add('flex');
+          $('play-streak-count').textContent = p.streak;
+        } else {
+          streakBadge.classList.add('hidden');
+          streakBadge.classList.remove('flex');
+        }
+
+        // Hide feedback bar
+        const fb = $('play-feedback-bar');
+        fb.classList.add('hidden');
+        fb.classList.remove('flex');
+
+        // Animate question card
+        const qCard = $('play-question-card');
+        qCard.classList.remove('anim-pop');
+        void qCard.offsetWidth;
+        qCard.classList.add('anim-pop');
+        $('play-question-text').textContent = q.question;
+
+        // Render 4 answer tiles
+        const letters = ['A', 'B', 'C', 'D'];
+        const grid = $('play-options-grid');
+        grid.innerHTML = q.options.map((opt, idx) => `
+          <button type="button" data-opt-idx="${idx}" class="answer-tile tile-${idx} rounded-2xl p-4 sm:p-5 text-left text-white font-bold text-base sm:text-lg flex items-center gap-3.5 shadow-lg anim-pop" style="animation-delay: ${idx * 65}ms">
+            <span class="w-9 h-9 rounded-xl bg-black/25 flex items-center justify-center font-black text-sm shrink-0">${letters[idx]}</span>
+            <span class="leading-snug">${escapeHtml(opt)}</span>
+          </button>
+        `).join('');
+
+        grid.querySelectorAll('[data-opt-idx]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            submitAnswer(Number(btn.getAttribute('data-opt-idx')));
+          });
+        });
+
+        // Start timer
+        updateTimerUI();
+        const startTs = Date.now();
+        let lastWhole = p.maxTime;
+        p.timerId = setInterval(() => {
+          const elapsed = (Date.now() - startTs) / 1000;
+          p.timeLeft = Math.max(0, p.maxTime - elapsed);
+          const whole = Math.ceil(p.timeLeft);
+          if (whole < lastWhole && whole <= 5 && whole > 0) {
+            Sound.tick();
+          }
+          lastWhole = whole;
+          updateTimerUI();
+          if (p.timeLeft <= 0) {
+            clearPlayTimer();
+            submitAnswer(-1); // Time out
+          }
+        }, 80);
+      }
+
+      function updateTimerUI() {
+        const p = state.play;
+        const pct = Math.max(0, Math.min(100, (p.timeLeft / p.maxTime) * 100));
+        const bar = $('play-timer-bar');
+        const txt = $('play-timer-text');
+        bar.style.width = `${pct}%`;
+        txt.textContent = `${Math.ceil(p.timeLeft)}s`;
+
+        if (pct > 50) {
+          bar.className = 'h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-300 transition-all duration-100';
+          txt.className = 'px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-sm';
+        } else if (pct > 25) {
+          bar.className = 'h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-400 transition-all duration-100';
+          txt.className = 'px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-sm';
+        } else {
+          bar.className = 'h-full rounded-full bg-gradient-to-r from-rose-500 to-red-500 transition-all duration-100 animate-pulse';
+          txt.className = 'px-2.5 py-0.5 rounded-full bg-rose-500/25 text-rose-300 font-mono text-sm animate-pulse';
+        }
+      }
+
+      function showFloatingPoints(text) {
+        const el = $('floating-points');
+        el.textContent = text;
+        el.classList.remove('anim-float-score');
+        void el.offsetWidth;
+        el.classList.add('anim-float-score');
+      }
+
+      function submitAnswer(chosenIdx) {
+        const p = state.play;
+        if (p.answered) return;
+        p.answered = true;
+        clearPlayTimer();
+
+        const q = p.quiz.questions[p.index];
+        const isCorrect = chosenIdx === q.answer;
+        const tiles = $('play-options-grid').querySelectorAll('[data-opt-idx]');
+
+        tiles.forEach(btn => {
+          btn.disabled = true;
+          const idx = Number(btn.getAttribute('data-opt-idx'));
+          if (idx === q.answer) {
+            btn.classList.add('tile-correct', 'anim-correct');
+          } else if (idx === chosenIdx) {
+            btn.classList.add('tile-wrong', 'anim-shake');
+          } else {
+            btn.classList.add('tile-dim');
+          }
+        });
+
+        let earned = 0;
+        if (isCorrect) {
+          p.correctCount++;
+          p.streak++;
+          if (p.streak > p.bestStreak) p.bestStreak = p.streak;
+          const speedBonus = Math.round((p.timeLeft / p.maxTime) * 400);
+          const streakBonus = Math.min(p.streak - 1, 5) * 100;
+          earned = 600 + speedBonus + streakBonus;
+          p.score += earned;
+          $('play-score').textContent = p.score.toLocaleString('id-ID');
+          showFloatingPoints(`+${earned}`);
+          Sound.correct(p.streak);
+          fireConfetti(false);
+        } else {
+          p.streak = 0;
+          Sound.wrong();
+        }
+
+        // Update streak badge immediately
+        const streakBadge = $('play-streak-badge');
+        if (p.streak >= 2) {
+          streakBadge.classList.remove('hidden');
+          streakBadge.classList.add('flex');
+          $('play-streak-count').textContent = p.streak;
+        } else {
+          streakBadge.classList.add('hidden');
+          streakBadge.classList.remove('flex');
+        }
+
+        p.history.push({
+          question: q.question,
+          options: q.options,
+          correctIdx: q.answer,
+          chosenIdx,
+          isCorrect,
+          earned
+        });
+
+        // Show feedback bar
+        const fb = $('play-feedback-bar');
+        const iconWrap = $('feedback-icon-wrap');
+        const letters = ['A', 'B', 'C', 'D'];
+        if (isCorrect) {
+          fb.className = 'rounded-2xl p-4 flex items-center justify-between gap-4 anim-pop bg-emerald-600/90 border border-emerald-300/40 text-white shadow-xl';
+          iconWrap.className = 'w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0';
+          iconWrap.innerHTML = '<i data-lucide="check" class="w-6 h-6 text-white"></i>';
+          const praises = ['Tepat Sekali!', 'Mantap! Cepat & Akurat!', 'Luar Biasa!', 'On Fire! 🔥'];
+          $('feedback-title').textContent = praises[Math.min(p.streak - 1, praises.length - 1)];
+          $('feedback-sub').textContent = `+${earned} poin${p.streak >= 2 ? ` (termasuk bonus ${p.streak}x streak!)` : ''}`;
+        } else {
+          fb.className = 'rounded-2xl p-4 flex items-center justify-between gap-4 anim-pop bg-rose-600/90 border border-rose-300/40 text-white shadow-xl';
+          iconWrap.className = 'w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0';
+          iconWrap.innerHTML = '<i data-lucide="x" class="w-6 h-6 text-white"></i>';
+          $('feedback-title').textContent = chosenIdx === -1 ? 'Waktu Habis!' : 'Kurang Tepat';
+          $('feedback-sub').textContent = `Jawaban benar: ${letters[q.answer]}. ${q.options[q.answer]}`;
+        }
+
+        const isLast = p.index === p.quiz.questions.length - 1;
+        $('btn-next-label').textContent = isLast ? 'Lihat Hasil' : 'Soal Berikutnya';
+        if (window.lucide) lucide.createIcons({ nodes: [fb] });
+      }
+
+      function finishQuiz() {
+        const p = state.play;
+        const total = p.quiz.questions.length;
+        const accuracy = total > 0 ? Math.round((p.correctCount / total) * 100) : 0;
+
+        // Save attempt to scores
+        const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        const record = {
+          id: 'sc-' + Date.now(),
+          quizId: p.quiz.id,
+          studentName: p.studentName,
+          score: p.score,
+          correct: p.correctCount,
+          total,
+          accuracy,
+          bestStreak: p.bestStreak,
+          date: nowStr
+        };
+        state.scores.unshift(record);
+        saveState();
+        CloudDB.saveScore(record);
+
+        hideAllViews();
+        $('view-quiz-result').classList.remove('hidden');
+
+        Sound.victory();
+        fireConfetti(true);
+
+        $('result-headline').textContent = accuracy >= 80 ? `Luar Biasa, ${p.studentName}! 🎉` : accuracy >= 50 ? `Kerja Bagus, ${p.studentName}!` : `Tetap Semangat, ${p.studentName}!`;
+        $('result-quiz-name').textContent = `${p.quiz.title} (${p.quiz.subject})`;
+        $('res-score').textContent = p.score.toLocaleString('id-ID');
+        $('res-accuracy').textContent = `${accuracy}%`;
+        $('res-correct').textContent = `${p.correctCount}/${total}`;
+        $('res-streak').textContent = `${p.bestStreak}x`;
+
+        // Leaderboard for this quiz
+        const board = state.scores
+          .filter(s => s.quizId === p.quiz.id)
+          .sort((a, b) => b.score - a.score);
+
+        // Render Top 3 Podium (order: 2nd, 1st, 3rd)
+        const podiumEl = $('result-podium');
+        const top3 = [board[1], board[0], board[2]];
+        const podiumCfg = [
+          { rank: 2, h: 'h-24', color: 'from-slate-300 to-slate-500', medal: '🥈' },
+          { rank: 1, h: 'h-32', color: 'from-amber-300 to-amber-500', medal: '👑' },
+          { rank: 3, h: 'h-20', color: 'from-orange-400 to-amber-700', medal: '🥉' }
+        ];
+        podiumEl.innerHTML = top3.map((entry, i) => {
+          if (!entry) return `<div class="w-24 sm:w-28"></div>`;
+          const cfg = podiumCfg[i];
+          const isMe = entry.id === record.id;
+          return `
+            <div class="w-24 sm:w-28 flex flex-col items-center">
+              <div class="text-xs font-bold truncate max-w-full mb-1 ${isMe ? 'text-amber-300' : 'text-violet-100'}">${escapeHtml(entry.studentName)}</div>
+              <div class="text-[11px] font-mono text-violet-300 mb-1.5">${entry.score.toLocaleString('id-ID')}</div>
+              <div class="w-full ${cfg.h} rounded-t-2xl bg-gradient-to-b ${cfg.color} flex flex-col items-center justify-center shadow-lg anim-podium" style="animation-delay: ${i * 120}ms">
+                <span class="text-2xl">${cfg.medal}</span>
+                <span class="font-black text-slate-900 text-lg">#${cfg.rank}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Full leaderboard table
+        $('result-leaderboard-body').innerHTML = board.slice(0, 10).map((s, idx) => {
+          const isMe = s.id === record.id;
+          return `
+            <tr class="${isMe ? 'bg-fuchsia-500/20 font-bold' : 'hover:bg-white/5'}">
+              <td class="px-4 py-3 text-center font-black ${idx === 0 ? 'text-amber-300' : 'text-violet-300'}">${idx + 1}</td>
+              <td class="px-4 py-3 text-white">${escapeHtml(s.studentName)} ${isMe ? '<span class="ml-1.5 px-2 py-0.5 rounded-full bg-fuchsia-500 text-[10px] font-extrabold">KAMU</span>' : ''}</td>
+              <td class="px-4 py-3 text-right text-emerald-300 font-semibold">${s.accuracy}%</td>
+              <td class="px-4 py-3 text-right text-orange-300">${s.bestStreak}x</td>
+              <td class="px-4 py-3 text-right font-black text-amber-300">${s.score.toLocaleString('id-ID')}</td>
+            </tr>
+          `;
+        }).join('');
+
+        // Review list
+        const letters = ['A', 'B', 'C', 'D'];
+        $('result-review-list').innerHTML = p.history.map((item, idx) => `
+          <div class="p-4 rounded-2xl border ${item.isCorrect ? 'bg-emerald-500/10 border-emerald-400/30' : 'bg-rose-500/10 border-rose-400/30'} space-y-1.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="font-bold text-sm text-white">${idx + 1}. ${escapeHtml(item.question)}</div>
+              <span class="shrink-0 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${item.isCorrect ? 'bg-emerald-500/30 text-emerald-200' : 'bg-rose-500/30 text-rose-200'}">
+                ${item.isCorrect ? `+${item.earned}` : 'Salah'}
+              </span>
+            </div>
+            <div class="text-xs text-violet-200 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Jawabanmu: <strong class="${item.isCorrect ? 'text-emerald-300' : 'text-rose-300'}">${item.chosenIdx >= 0 ? `${letters[item.chosenIdx]}. ${escapeHtml(item.options[item.chosenIdx])}` : 'Waktu Habis'}</strong></span>
+              ${!item.isCorrect ? `<span>Kunci Benar: <strong class="text-emerald-300">${letters[item.correctIdx]}. ${escapeHtml(item.options[item.correctIdx])}</strong></span>` : ''}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      /* ======================== TEACHER DASHBOARD ======================== */
+      function switchTeacherTab(tab) {
+        state.teacherTab = tab;
+        document.querySelectorAll('.teacher-tab').forEach(btn => {
+          const active = btn.getAttribute('data-tab') === tab;
+          btn.className = active
+            ? 'teacher-tab px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow-lg shadow-violet-600/30'
+            : 'teacher-tab px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all glass-light text-violet-200 hover:bg-white/15';
+        });
+        ['tab-import', 'tab-manage', 'tab-scores'].forEach(id => $(id).classList.add('hidden'));
+        $(`tab-${tab}`).classList.remove('hidden');
+        $('count-quizzes').textContent = state.quizzes.length;
+
+        if (tab === 'manage') renderTeacherQuizzes();
+        if (tab === 'scores') renderTeacherScores();
+      }
+
+      function renderDraftPreview() {
+        const panel = $('import-preview-panel');
+        const list = $('import-preview-list');
+        $('preview-q-count').textContent = state.draftQuestions.length;
+        if (!state.draftQuestions.length) {
+          panel.classList.add('hidden');
+          return;
+        }
+        panel.classList.remove('hidden');
+
+        const letters = ['A', 'B', 'C', 'D'];
+        list.innerHTML = state.draftQuestions.map((q, idx) => `
+          <div class="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-3" data-draft-idx="${idx}">
+            <div class="flex items-start gap-2">
+              <span class="px-2.5 py-1 rounded-lg bg-violet-500/30 text-violet-200 text-xs font-black shrink-0">#${idx + 1}</span>
+              <input type="text" data-field="question" value="${escapeHtml(q.question)}" class="w-full px-3 py-1.5 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400" />
+              <button type="button" data-remove-draft="${idx}" class="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 shrink-0" title="Hapus Soal">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              ${q.options.map((opt, oIdx) => `
+                <div class="flex items-center gap-2 p-2 rounded-xl border ${q.answer === oIdx ? 'bg-emerald-500/15 border-emerald-400/50' : 'bg-white/5 border-white/10'}">
+                  <button type="button" data-set-ans="${idx}-${oIdx}" title="Jadikan Jawaban Benar" class="w-7 h-7 rounded-lg text-xs font-black shrink-0 transition-colors ${q.answer === oIdx ? 'bg-emerald-500 text-white' : 'bg-white/10 text-violet-300 hover:bg-white/20'}">
+                    ${letters[oIdx]}
+                  </button>
+                  <input type="text" data-opt-field="${oIdx}" value="${escapeHtml(opt)}" class="w-full bg-transparent text-xs sm:text-sm text-white focus:outline-none" />
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+
+        if (window.lucide) lucide.createIcons({ nodes: [list] });
+
+        list.querySelectorAll('[data-draft-idx]').forEach(card => {
+          const idx = Number(card.getAttribute('data-draft-idx'));
+          card.querySelector('[data-field="question"]').addEventListener('input', (e) => {
+            state.draftQuestions[idx].question = e.target.value;
+          });
+          card.querySelectorAll('[data-opt-field]').forEach(inp => {
+            const oIdx = Number(inp.getAttribute('data-opt-field'));
+            inp.addEventListener('input', (e) => {
+              state.draftQuestions[idx].options[oIdx] = e.target.value;
+            });
+          });
+          card.querySelectorAll('[data-set-ans]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const [, oIdx] = btn.getAttribute('data-set-ans').split('-').map(Number);
+              state.draftQuestions[idx].answer = oIdx;
+              renderDraftPreview();
+            });
+          });
+          card.querySelector('[data-remove-draft]').addEventListener('click', () => {
+            state.draftQuestions.splice(idx, 1);
+            renderDraftPreview();
+          });
+        });
+      }
+
+      function renderTeacherQuizzes() {
+        const wrap = $('teacher-quiz-list');
+        $('count-quizzes').textContent = state.quizzes.length;
+        if (!state.quizzes.length) {
+          wrap.innerHTML = `<div class="col-span-full glass rounded-2xl p-8 text-center text-violet-300 text-sm">Belum ada kuis. Mulai dengan upload file soal di tab Import Soal Otomatis.</div>`;
+          return;
+        }
+        wrap.innerHTML = state.quizzes.map(q => {
+          const attempts = state.scores.filter(s => s.quizId === q.id);
+          const avg = attempts.length ? Math.round(attempts.reduce((a, b) => a + b.accuracy, 0) / attempts.length) : 0;
+          return `
+            <div class="glass rounded-2xl p-5 flex flex-col justify-between gap-4">
+              <div class="space-y-2">
+                <div class="flex items-start justify-between gap-2">
+                  <span class="px-2.5 py-0.5 rounded-full bg-violet-500/25 text-violet-200 text-xs font-bold">${escapeHtml(q.subject)}</span>
+                  <button type="button" data-t-copy="${escapeHtml(q.code)}" class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/30 text-amber-300 font-mono text-xs font-black flex items-center gap-1">
+                    <span>${escapeHtml(q.code)}</span>
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                  </button>
+                </div>
+                <h3 class="font-extrabold text-lg text-white">${escapeHtml(q.title)}</h3>
+                <div class="flex flex-wrap gap-3 text-xs text-violet-300">
+                  <span>${q.questions.length} soal</span>
+                  <span>•</span>
+                  <span>${q.timerPerQuestion}s/soal</span>
+                  <span>•</span>
+                  <span>${attempts.length} peserta (rata-rata ${avg}%)</span>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2 pt-2 border-t border-white/10">
+                <button type="button" data-t-edit="${escapeHtml(q.id)}" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold flex items-center gap-1.5">
+                  <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit Soal
+                </button>
+                <button type="button" data-t-play="${escapeHtml(q.id)}" class="px-3 py-1.5 rounded-xl bg-violet-500/30 hover:bg-violet-500/50 text-xs font-bold flex items-center gap-1.5">
+                  <i data-lucide="play" class="w-3.5 h-3.5"></i> Pratinjau
+                </button>
+                <button type="button" data-t-del="${escapeHtml(q.id)}" class="ml-auto px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        if (window.lucide) lucide.createIcons({ nodes: [wrap] });
+
+        wrap.querySelectorAll('[data-t-copy]').forEach(b => b.addEventListener('click', () => copyToClipboard(b.getAttribute('data-t-copy'))));
+        wrap.querySelectorAll('[data-t-play]').forEach(b => b.addEventListener('click', () => {
+          const quiz = state.quizzes.find(x => x.id === b.getAttribute('data-t-play'));
+          if (quiz) startQuizCountdown(quiz, 'Pratinjau Guru');
+        }));
+        wrap.querySelectorAll('[data-t-edit]').forEach(b => b.addEventListener('click', () => openEditQuizModal(b.getAttribute('data-t-edit'))));
+        wrap.querySelectorAll('[data-t-del]').forEach(b => b.addEventListener('click', () => {
+          const quiz = state.quizzes.find(x => x.id === b.getAttribute('data-t-del'));
+          if (!quiz) return;
+          state.pendingDeleteId = quiz.id;
+          $('modal-confirm-text').textContent = `Kuis "${quiz.title}" (${quiz.code}) akan dihapus beserta semua soalnya.`;
+          $('modal-confirm').classList.remove('hidden');
+          $('modal-confirm').classList.add('flex');
+        }));
+      }
+
+      /* ======================== EDIT QUIZ MODAL ======================== */
+      let editBuffer = [];
+      function openEditQuizModal(quizId) {
+        const quiz = state.quizzes.find(q => q.id === quizId);
+        if (!quiz) return;
+        state.editingQuizId = quizId;
+        editBuffer = JSON.parse(JSON.stringify(quiz.questions));
+        $('edit-modal-title').textContent = `Edit Soal: ${quiz.title}`;
+        renderEditModalBody();
+        $('modal-edit-quiz').classList.remove('hidden');
+        $('modal-edit-quiz').classList.add('flex');
+      }
+
+      function renderEditModalBody() {
+        const body = $('edit-modal-body');
+        const letters = ['A', 'B', 'C', 'D'];
+        body.innerHTML = editBuffer.map((q, idx) => `
+          <div class="p-3.5 rounded-2xl bg-black/30 border border-white/10 space-y-2.5" data-eb-idx="${idx}">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-black text-violet-300">#${idx + 1}</span>
+              <input type="text" data-eb-q value="${escapeHtml(q.question)}" class="w-full px-3 py-1.5 rounded-lg bg-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-400" />
+              <button type="button" data-eb-del="${idx}" class="p-1.5 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/40"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              ${q.options.map((o, oIdx) => `
+                <div class="flex items-center gap-2 p-1.5 rounded-xl border ${q.answer === oIdx ? 'bg-emerald-500/15 border-emerald-400/50' : 'bg-white/5 border-white/10'}">
+                  <button type="button" data-eb-ans="${idx}-${oIdx}" class="w-6 h-6 rounded-md text-xs font-black ${q.answer === oIdx ? 'bg-emerald-500 text-white' : 'bg-white/10 text-violet-300'}">${letters[oIdx]}</button>
+                  <input type="text" data-eb-opt="${oIdx}" value="${escapeHtml(o)}" class="w-full bg-transparent text-xs text-white focus:outline-none" />
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+        if (window.lucide) lucide.createIcons({ nodes: [body] });
+
+        body.querySelectorAll('[data-eb-idx]').forEach(card => {
+          const idx = Number(card.getAttribute('data-eb-idx'));
+          card.querySelector('[data-eb-q]').addEventListener('input', (e) => { editBuffer[idx].question = e.target.value; });
+          card.querySelectorAll('[data-eb-opt]').forEach(inp => {
+            const oIdx = Number(inp.getAttribute('data-eb-opt'));
+            inp.addEventListener('input', (e) => { editBuffer[idx].options[oIdx] = e.target.value; });
+          });
+          card.querySelectorAll('[data-eb-ans]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const [, oIdx] = btn.getAttribute('data-eb-ans').split('-').map(Number);
+              editBuffer[idx].answer = oIdx;
+              renderEditModalBody();
+            });
+          });
+          card.querySelector('[data-eb-del]').addEventListener('click', () => {
+            editBuffer.splice(idx, 1);
+            renderEditModalBody();
+          });
+        });
+      }
+
+      /* ======================== TEACHER SCORES ======================== */
+      function renderTeacherScores() {
+        const sel = $('filter-score-quiz');
+        const currentVal = sel.value || 'all';
+        sel.innerHTML = `<option value="all">Semua Kuis</option>` +
+          state.quizzes.map(q => `<option value="${escapeHtml(q.id)}">${escapeHtml(q.title)} (${escapeHtml(q.code)})</option>`).join('');
+        if ([...sel.options].some(o => o.value === currentVal)) sel.value = currentVal;
+
+        const filterQuiz = sel.value;
+        const search = ($('filter-score-search').value || '').trim().toLowerCase();
+        const rows = state.scores
+          .filter(s => (filterQuiz === 'all' || s.quizId === filterQuiz) && s.studentName.toLowerCase().includes(search))
+          .sort((a, b) => b.score - a.score);
+
+        $('kpi-total-attempts').textContent = rows.length;
+        $('kpi-avg-score').textContent = rows.length ? Math.round(rows.reduce((a, b) => a + b.score, 0) / rows.length).toLocaleString('id-ID') : '0';
+        $('kpi-avg-acc').textContent = rows.length ? `${Math.round(rows.reduce((a, b) => a + b.accuracy, 0) / rows.length)}%` : '0%';
+        $('kpi-top-score').textContent = rows.length ? rows[0].score.toLocaleString('id-ID') : '0';
+
+        const tbody = $('teacher-scores-body');
+        if (!rows.length) {
+          tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-violet-300 text-sm">Belum ada data nilai untuk filter ini.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows.map((s, idx) => {
+          const quiz = state.quizzes.find(q => q.id === s.quizId);
+          return `
+            <tr class="hover:bg-white/5">
+              <td class="px-4 py-3 font-black ${idx < 3 ? 'text-amber-300' : 'text-violet-300'}">${idx + 1}</td>
+              <td class="px-4 py-3 font-bold text-white">${escapeHtml(s.studentName)}</td>
+              <td class="px-4 py-3 text-violet-200">${escapeHtml(quiz ? quiz.title : 'Kuis Dihapus')}</td>
+              <td class="px-4 py-3 text-right">${s.correct}/${s.total}</td>
+              <td class="px-4 py-3 text-right text-emerald-300 font-bold">${s.accuracy}%</td>
+              <td class="px-4 py-3 text-right text-orange-300">${s.bestStreak}x</td>
+              <td class="px-4 py-3 text-right font-black text-amber-300">${s.score.toLocaleString('id-ID')}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      /* ======================== EVENT LISTENERS ======================== */
+      $('btn-brand-home').addEventListener('click', showStudentHome);
+      $('nav-student').addEventListener('click', showStudentHome);
+      $('nav-teacher').addEventListener('click', showTeacherArea);
+
+      $('btn-sound-toggle').addEventListener('click', () => {
+        Sound.enabled = !Sound.enabled;
+        $('icon-sound').setAttribute('data-lucide', Sound.enabled ? 'volume-2' : 'volume-x');
+        if (window.lucide) lucide.createIcons({ nodes: [$('btn-sound-toggle')] });
+        showToast(Sound.enabled ? 'Efek suara diaktifkan' : 'Efek suara dimatikan', 'info');
+      });
+
+      // Student Join Form
+      $('btn-join-quiz').addEventListener('click', () => {
+        const name = $('input-student-name').value.trim();
+        const code = $('input-join-code').value.trim().toUpperCase();
+        if (!name) { showToast('Masukkan namamu terlebih dahulu!', 'error'); $('input-student-name').focus(); return; }
+        if (!code) { showToast('Masukkan kode kuis dari gurumu!', 'error'); $('input-join-code').focus(); return; }
+        const quiz = state.quizzes.find(q => q.code.toUpperCase() === code);
+        if (!quiz) { showToast(`Kode kuis "${code}" tidak ditemukan.`, 'error'); return; }
+        startQuizCountdown(quiz, name);
+      });
+
+      $('input-search-quiz').addEventListener('input', renderStudentQuizGrid);
+
+      // Quiz Play Controls
+      $('btn-quit-quiz').addEventListener('click', showStudentHome);
+      $('btn-next-question').addEventListener('click', () => {
+        if (state.play.index < state.play.quiz.questions.length - 1) {
+          state.play.index++;
+          renderCurrentQuestion();
+        } else {
+          finishQuiz();
+        }
+      });
+
+      // Keyboard shortcuts 1-4 / A-D during quiz
+      document.addEventListener('keydown', (e) => {
+        if ($('view-quiz-play').classList.contains('hidden')) return;
+        const keyMap = { '1': 0, '2': 1, '3': 2, '4': 3, a: 0, b: 1, c: 2, d: 3 };
+        const k = e.key.toLowerCase();
+        if (!state.play.answered && k in keyMap) {
+          submitAnswer(keyMap[k]);
+        } else if (state.play.answered && e.key === 'Enter') {
+          $('btn-next-question').click();
+        }
+      });
+
+      // Result Buttons
+      $('btn-replay-quiz').addEventListener('click', () => {
+        if (state.play.quiz) startQuizCountdown(state.play.quiz, state.play.studentName);
+      });
+      $('btn-back-home').addEventListener('click', showStudentHome);
+
+      // Teacher Login
+      $('btn-fill-demo-login').addEventListener('click', () => {
+        $('teacher-user').value = 'guru';
+        $('teacher-pass').value = 'guru123';
+      });
+      $('form-teacher-login').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const u = $('teacher-user').value.trim();
+        const p = $('teacher-pass').value.trim();
+        if (u === 'guru' && p === 'guru123') {
+          state.teacherLoggedIn = true;
+          showToast('Selamat datang di Dashboard Admin Guru!', 'success');
+          showTeacherArea();
+        } else {
+          showToast('Username atau password salah. Gunakan guru / guru123.', 'error');
+        }
+      });
+      $('btn-teacher-logout').addEventListener('click', () => {
+        state.teacherLoggedIn = false;
+        showToast('Berhasil keluar dari mode Guru.', 'info');
+        showTeacherArea();
+      });
+
+      // Teacher Tabs
+      document.querySelectorAll('.teacher-tab').forEach(btn => {
+        btn.addEventListener('click', () => switchTeacherTab(btn.getAttribute('data-tab')));
+      });
+
+      // Auto-Import Dropzone & File Input
+      const dropzone = $('dropzone');
+      const fileInput = $('input-file-upload');
+      dropzone.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-load-sample-import')) return;
+        fileInput.click();
+      });
+      dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dropzone-active'); });
+      dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dropzone-active'));
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dropzone-active');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleUploadedFile(e.dataTransfer.files[0]);
+        }
+      });
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files && fileInput.files[0]) {
+          handleUploadedFile(fileInput.files[0]);
+          fileInput.value = '';
+        }
+      });
+
+      // Template Downloads
+      const SAMPLE_TXT = `1. Protokol utama yang digunakan untuk mentransfer halaman web secara terenkripsi adalah?
+A. HTTP
+B. FTP
+C. HTTPS
+D. SMTP
+Jawaban: C
+
+2. Dalam basis data relasional, kunci unik yang membedakan setiap baris dalam tabel disebut?
+A. Foreign Key
+B. Primary Key
+C. Index Key
+D. Composite Key
+Jawaban: B
+
+3. Perintah Git untuk mengirim commit lokal ke repository remote adalah?
+A. git pull
+B. git clone
+C. git push
+D. git merge
+Jawaban: C
+
+4. Komponen CPU yang bertugas melakukan operasi aritmetika dan logika adalah?
+A. ALU
+B. RAM
+C. Cache
+D. Register
+Jawaban: A`;
+
+      const SAMPLE_CSV = `Pertanyaan,A,B,C,D,Jawaban
+"Protokol utama untuk transfer halaman web terenkripsi adalah?","HTTP","FTP","HTTPS","SMTP","C"
+"Kunci unik yang membedakan setiap baris dalam tabel database disebut?","Foreign Key","Primary Key","Index Key","Composite Key","B"
+"Perintah Git untuk mengirim commit lokal ke repository remote adalah?","git pull","git clone","git push","git merge","C"
+"Komponen CPU yang bertugas melakukan operasi aritmetika dan logika adalah?","ALU","RAM","Cache","Register","A"`;
+
+      $('btn-dl-template-txt').addEventListener('click', () => {
+        downloadFile('template_soal_quizspark.txt', SAMPLE_TXT);
+        showToast('Template .txt berhasil diunduh!', 'success');
+      });
+      $('btn-dl-template-csv').addEventListener('click', () => {
+        downloadFile('template_soal_quizspark.csv', SAMPLE_CSV, 'text/csv;charset=utf-8');
+        showToast('Template .csv berhasil diunduh!', 'success');
+      });
+
+      $('btn-load-sample-import').addEventListener('click', (e) => {
+        e.stopPropagation();
+        $('textarea-raw-import').value = SAMPLE_TXT;
+        $('new-quiz-title').value = 'Kuis Jaringan & Basis Data';
+        $('new-quiz-subject').value = 'Teknik Informatika';
+        $('new-quiz-code').value = generateCode();
+        state.draftQuestions = parseTextQuestions(SAMPLE_TXT);
+        renderDraftPreview();
+        showToast(`${state.draftQuestions.length} soal contoh berhasil dimuat otomatis!`, 'success');
+        fireConfetti(false);
+      });
+
+      $('btn-parse-text').addEventListener('click', () => {
+        const raw = $('textarea-raw-import').value.trim();
+        if (!raw) { showToast('Tempel teks soal terlebih dahulu.', 'error'); return; }
+        const parsed = raw.includes(',') && raw.split('\n')[0].split(',').length >= 6
+          ? parseCSVQuestions(raw)
+          : parseTextQuestions(raw);
+        if (!parsed.length) {
+          showToast('Belum ada soal yang terdeteksi. Pastikan format sesuai panduan.', 'error');
+          return;
+        }
+        state.draftQuestions = parsed;
+        renderDraftPreview();
+        showToast(`Berhasil mendeteksi ${parsed.length} soal!`, 'success');
+      });
+
+      $('btn-regen-code').addEventListener('click', () => {
+        $('new-quiz-code').value = generateCode();
+      });
+
+      $('btn-add-draft-q').addEventListener('click', () => {
+        state.draftQuestions.push({ question: 'Tulis pertanyaan baru di sini...', options: ['Pilihan A', 'Pilihan B', 'Pilihan C', 'Pilihan D'], answer: 0 });
+        renderDraftPreview();
+      });
+
+      $('btn-publish-quiz').addEventListener('click', () => {
+        const title = $('new-quiz-title').value.trim();
+        const subject = $('new-quiz-subject').value.trim() || 'Umum';
+        const timer = Math.max(5, Math.min(120, Number($('new-quiz-timer').value) || 20));
+        const code = ($('new-quiz-code').value.trim() || generateCode()).toUpperCase();
+
+        if (!title) { showToast('Isi Judul Kuis terlebih dahulu.', 'error'); $('new-quiz-title').focus(); return; }
+        if (!state.draftQuestions.length) { showToast('Belum ada soal untuk diterbitkan.', 'error'); return; }
+        if (state.quizzes.some(q => q.code.toUpperCase() === code)) {
+          showToast(`Kode "${code}" sudah dipakai. Klik tombol acak kode.`, 'error');
+          return;
+        }
+
+        const newQuiz = {
+          id: 'qz-' + Date.now(),
+          code,
+          title,
+          subject,
+          timerPerQuestion: timer,
+          createdAt: new Date().toISOString().slice(0, 10),
+          questions: JSON.parse(JSON.stringify(state.draftQuestions))
+        };
+        state.quizzes.unshift(newQuiz);
+        saveState();
+        CloudDB.saveQuiz(newQuiz);
+        state.lastPublishedCode = code;
+
+        // Reset draft form
+        state.draftQuestions = [];
+        $('textarea-raw-import').value = '';
+        $('new-quiz-title').value = '';
+        $('new-quiz-code').value = generateCode();
+        renderDraftPreview();
+        $('count-quizzes').textContent = state.quizzes.length;
+
+        // Show celebration modal
+        $('modal-pub-title').textContent = `${newQuiz.title} (${newQuiz.questions.length} soal)`;
+        $('modal-pub-code').textContent = code;
+        $('modal-published').classList.remove('hidden');
+        $('modal-published').classList.add('flex');
+        Sound.victory();
+        fireConfetti(true);
+      });
+
+      // Published Modal actions
+      $('btn-modal-copy-code').addEventListener('click', () => copyToClipboard(state.lastPublishedCode));
+      $('btn-modal-close-pub').addEventListener('click', () => {
+        $('modal-published').classList.add('hidden');
+        $('modal-published').classList.remove('flex');
+      });
+      $('btn-modal-test-student').addEventListener('click', () => {
+        $('modal-published').classList.add('hidden');
+        $('modal-published').classList.remove('flex');
+        $('input-join-code').value = state.lastPublishedCode;
+        showStudentHome();
+        $('input-student-name').focus();
+      });
+
+      // Confirm Delete Modal
+      $('btn-confirm-cancel').addEventListener('click', () => {
+        state.pendingDeleteId = null;
+        $('modal-confirm').classList.add('hidden');
+        $('modal-confirm').classList.remove('flex');
+      });
+      $('btn-confirm-yes').addEventListener('click', () => {
+        if (state.pendingDeleteId) {
+          const delId = state.pendingDeleteId;
+          state.quizzes = state.quizzes.filter(q => q.id !== delId);
+          saveState();
+          CloudDB.deleteQuiz(delId);
+          state.pendingDeleteId = null;
+          renderTeacherQuizzes();
+          showToast('Kuis berhasil dihapus.', 'success');
+        }
+        $('modal-confirm').classList.add('hidden');
+        $('modal-confirm').classList.remove('flex');
+      });
+
+      // Edit Modal controls
+      $('btn-close-edit-modal').addEventListener('click', () => {
+        $('modal-edit-quiz').classList.add('hidden');
+        $('modal-edit-quiz').classList.remove('flex');
+      });
+      $('btn-edit-add-q').addEventListener('click', () => {
+        editBuffer.push({ question: 'Pertanyaan baru...', options: ['Pilihan A', 'Pilihan B', 'Pilihan C', 'Pilihan D'], answer: 0 });
+        renderEditModalBody();
+      });
+      $('btn-edit-save').addEventListener('click', () => {
+        const quiz = state.quizzes.find(q => q.id === state.editingQuizId);
+        if (quiz && editBuffer.length) {
+          quiz.questions = JSON.parse(JSON.stringify(editBuffer));
+          saveState();
+          CloudDB.saveQuiz(quiz);
+          renderTeacherQuizzes();
+          showToast('Perubahan soal berhasil disimpan!', 'success');
+        }
+        $('modal-edit-quiz').classList.add('hidden');
+        $('modal-edit-quiz').classList.remove('flex');
+      });
+
+      // Score Filters & Export
+      $('filter-score-quiz').addEventListener('change', renderTeacherScores);
+      $('filter-score-search').addEventListener('input', renderTeacherScores);
+      $('btn-export-scores').addEventListener('click', () => {
+        const header = 'Peringkat,Nama Siswa,Kuis,Benar,Total,Akurasi (%),Streak Terbaik,Skor,Waktu';
+        const rows = [...state.scores].sort((a, b) => b.score - a.score).map((s, idx) => {
+          const q = state.quizzes.find(x => x.id === s.quizId);
+          const qTitle = (q ? q.title : 'Kuis Dihapus').replace(/"/g, '""');
+          return `${idx + 1},"${s.studentName.replace(/"/g, '""')}","${qTitle}",${s.correct},${s.total},${s.accuracy},${s.bestStreak},${s.score},"${s.date}"`;
+        });
+        downloadFile('rekap_nilai_quizspark.csv', [header, ...rows].join('\n'), 'text/csv;charset=utf-8');
+        showToast('Rekap nilai CSV berhasil diunduh!', 'success');
+      });
+
+      // Cloud Setup & Publish Modal controls
+      const openCloudModal = () => {
+        const cur = CloudDB.activeConfig || CloudDB.getStoredConfig();
+        if (cur) $('input-firebase-config').value = JSON.stringify(cur, null, 2);
+        $('modal-cloud-setup').classList.remove('hidden');
+        $('modal-cloud-setup').classList.add('flex');
+        if (window.lucide) lucide.createIcons({ nodes: [$('modal-cloud-setup')] });
+      };
+      $('btn-open-cloud-modal').addEventListener('click', openCloudModal);
+      $('btn-cloud-status').addEventListener('click', openCloudModal);
+      $('btn-close-cloud-modal').addEventListener('click', () => {
+        $('modal-cloud-setup').classList.add('hidden');
+        $('modal-cloud-setup').classList.remove('flex');
+      });
+
+      $('btn-save-cloud-config').addEventListener('click', () => {
+        const raw = $('input-firebase-config').value.trim();
+        if (!raw) { showToast('Tempel objek firebaseConfig terlebih dahulu.', 'error'); return; }
+        try {
+          const cfg = CloudDB.parseConfigInput(raw);
+          try { localStorage.setItem(CLOUD_CFG_STORAGE_KEY, JSON.stringify(cfg)); } catch (e) {}
+          CloudDB.connect(cfg, false);
+        } catch (err) {
+          showToast(err.message || 'Format firebaseConfig tidak valid.', 'error');
+        }
+      });
+
+      $('btn-disconnect-cloud').addEventListener('click', () => {
+        CloudDB.disconnect();
+        $('input-firebase-config').value = '';
+        showToast('Beralih ke Mode Lokal (localStorage).', 'info');
+      });
+
+      $('btn-download-publish-html').addEventListener('click', () => {
+        let cfgToEmbed = CloudDB.activeConfig || CloudDB.getStoredConfig();
+        const raw = $('input-firebase-config').value.trim();
+        if (raw) {
+          try { cfgToEmbed = CloudDB.parseConfigInput(raw); } catch (e) {}
+        }
+        let docHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        if (cfgToEmbed) {
+          const cfgBlock = 'const FIREBASE_CONFIG = ' + JSON.stringify(cfgToEmbed, null, 8) + ';';
+          docHtml = docHtml.replace(/const FIREBASE_CONFIG\s*=\s*\{[\s\S]*?\};/, cfgBlock);
+        }
+        downloadFile('index.html', docHtml, 'text/html;charset=utf-8');
+        showToast(cfgToEmbed ? 'index.html siap publish (dengan Firebase) berhasil diunduh!' : 'index.html (Mode Lokal) berhasil diunduh!', 'success');
+      });
+
+      /* ======================== INIT ======================== */
+      if (window.lucide) lucide.createIcons();
+      $('new-quiz-code').value = generateCode();
+      const savedCloudCfg = CloudDB.getStoredConfig();
+      if (savedCloudCfg) {
+        CloudDB.connect(savedCloudCfg, true);
+      } else {
+        CloudDB.updateBadge(false);
+      }
+      showStudentHome();
+    })();
+  </script>
+
+</body></html>
